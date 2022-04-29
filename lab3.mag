@@ -1,0 +1,230 @@
+function asciifloor(strcode);
+// in ascii, we want to evaluate uppercase and lowercase letters: this 
+// function returns the lower element of the interval in which the
+// encoding of the given letter (strcode) lays, e.g.
+// 99 -> return 97
+// 69 -> return 65
+// this is most useful if we wish to work in mod26, as the ascii for b and B 
+// is different but we want them to represent the same letter, albeit 
+// uppercase letters will be encrypted in uppercase and the same for lowercase.
+
+    if (strcode in [65..90]) then return 65;
+    else return 97;
+    end if;
+end function;
+
+
+
+
+// ----------- [EXERCISE 1] ------------------
+
+function ShiftCrypt(M,k)
+    error if k lt 0 or k gt 25, "key out of bounds [0,25]";
+    C:=[0 : j in [1..#M]];
+
+    for i in [1..#M] do
+        code := StringToCode(M[i]);
+
+        // code is somewhat mysterious: asciifloor is removed to get 
+        // the representation of the letter in mod 26 regardless of it being 
+        // upper or lowercase, then this floor is added again to add the 
+        // distintion after the encryption
+        if (code in [65..90] cat [97..122]) then
+            C[i] := (code - asciifloor(code) + k) mod 26 + asciifloor(code);
+        else C[i] := code;
+        end if;
+    end for;
+    return &cat [CodeToString(c) : c in C];
+end function;
+
+function ShiftDecrypt(  M,k)
+    error if k lt 0 or k gt 25, "key out of bounds [0,25]";
+    return ShiftCrypt(M,-k mod 26);
+end function;
+
+// ----------- [EXERCISE 2] ------------------
+
+function SubCrypt(M,pi)
+    C:=[0 : j in [1..#M]];
+
+    // for every letter in the message...
+    for i in [1..#M] do
+        code := StringToCode(M[i]);
+
+        if (code in [65..90] cat [97..122]) then
+            // code is somewhat mysterious: asciifloor is removed to get 
+            // the representation of the letter in mod 26 regardless of it being 
+            // upper or lowercase, then this floor is added again to add the 
+            // distintion after the encryption
+            // +1 and -1 are needed to match the range of a permutation and that 
+            // of mod 26 
+            C[i]:=((code - asciifloor(code)+1)^pi - 1)mod 26 + asciifloor(code);
+        else C[i]:=code;
+        end if;
+    end for;
+    return &cat [CodeToString(c) : c in C];
+end function;
+
+function SubDecrypt(x,pi)
+    return SubCrypt(x,pi^(-1));
+end function;
+
+// ----------- [EXERCISE 3] ------------------
+
+function VigCrypt(M,k)
+    // k key
+    // M message
+    len := #k;
+    C:=[0 : j in [1..#M]]; // ciphertext letters
+    j := 0;
+
+    // for every element of the plaintext...
+    for i in [1..#M] do
+        // encoded message letter
+        code := StringToCode(M[i]);
+
+        // build keystream letter 
+        keystream := StringToCode(k[j mod len + 1]);
+        // keystream ignores lower or uppercase
+        keystream := keystream - asciifloor(keystream);
+
+        // code is somewhat mysterious: asciifloor is removed to get 
+        // the representation of the letter in mod 26 regardless of it being 
+        // upper or lowercase, then this floor is added again to add the 
+        // distintion after the encryption
+        if (code in [65..90] cat [97..122]) then
+            C[i] := (code - asciifloor(code) + keystream) mod 26 + asciifloor(code);
+            j:=j+1; // <- keystream only updates when finding a letter
+        else C[i]:=code;
+        end if;
+    end for;
+    return &cat [CodeToString(c) : c in C];
+end function;
+
+function VigDecrypt(C,k)
+    // k key
+    // C ciphertext
+    len := #k;
+    P:=[0 : j in [1..#C]]; // plaintext letters
+    j := 0;
+
+    // for every element of the ciphertext...
+    for i in [1..#C] do
+        // encoded message letter
+        code := StringToCode(C[i]);
+
+        // build keystream letter 
+        keystream := StringToCode(k[j mod len + 1]);
+        // keystream ignores lower or uppercase
+        keystream := keystream - asciifloor(keystream);
+
+        // code is somewhat mysterious: asciifloor is removed to get 
+        // the representation of the letter in mod 26 regardless of it being 
+        // upper or lowercase, then this floor is added again to add the 
+        // distintion after the decryption
+        if (code in [65..90] cat [97..122]) then
+            P[i] := (code - asciifloor(code) - keystream) mod 26 + asciifloor(code);
+            j:=j+1; // <- keystream only updates when finding a letter
+        else P[i]:=code;
+        end if;
+    end for;
+    return &cat [CodeToString(p) : p in P];
+end function;
+
+// ----------- [EXERCISE 4] ------------------
+
+function Frequencies(L)
+    S := [0 : j in [1..26]];
+    R := RealField(5);
+    numletters := 0;
+
+    for i in [1..#L] do
+    // message letter
+    code := StringToCode(L[i]);
+    
+    if (code in [65..90] cat [97..122]) then
+        code := code - asciifloor(code);
+        S[code + 1] := S[code + 1] + 1 ;
+        numletters := numletters + 1;
+        end if;
+    end for;
+    F:= ChangeUniverse([i/numletters : i in S],R);
+    index:=(&+[n*(n-1) : n in S])/(numletters*(numletters-1));
+    return F,R!index;
+end function;
+
+// ----------- [EXERCISE 5] ------------------
+
+function Kasiski(x,index)
+    // -x is a string of characters
+    // -index is a real number
+
+    // removes non-letters from the string, because our implementation of 
+    // vig does not use keystream on non-letters
+    y:= &cat [x[i] : i in [1..#x] | 
+            StringToCode(x[i]) in [65..90] cat [97..122]];
+
+
+    // (1) len is set to 1 but this can lead to misunderstandings, user should be notified 
+    // that wen Kasiski() returns 1 this means the key is of length #y, or the program could 
+    // be modified to return that value; I liked it better this way, but the fix is easy,
+    // it suffices to change how the cycle works
+    // (2) iterstring is a list, it will contain the set of strings considered
+    // during the iteration
+    // (3) acceptable error is the acceptable error in the following comparison
+    // between indices 
+    len:=1; iterstring:=[y];
+    acceptable_error:=0.005;
+
+    while len le #y do 
+        // checks if a string in iterstring satisfies the index requirements
+        for i in [1..#iterstring] do
+            _,iterindex:=Frequencies(iterstring[i]);
+            if Abs(index-iterindex) le acceptable_error then return len;
+            end if;
+        end for;
+
+        // ^ wouldn't this procedure be more suitable with a list as an output,
+        // containing all possible len = key length values?
+
+        // builds the next iterstring, a list of shifted substrings
+        len:=len+1;
+        iterstring:=[ &cat [ y[j] : j in [s..#y by len] ] : s in [1..len] ];
+
+    end while;
+    // if nothing works, return 0
+    return 0;
+end function;
+
+
+
+// the function below is for the exta part of the exercise, the code does not work
+// as for now, but I will sort it out myself as soon as I have some spare time - as I 
+// am late for the deadline.
+
+// we know know the key is most likely of length 6...
+function getkey(x,index)
+    y:= &cat [x[i] : i in [1..#x] | 
+            StringToCode(x[i]) in [65..90] cat [97..122]];
+    strings:=[ &cat [ y[j] : j in [s..#y by 6] ] : s in [1..6] ];
+    key:=[];
+
+    // for all the strings...
+    for i in [1..6] do
+        // for all the letters in the alphabet...
+        pseudokey:=[];
+        for j in [0..25] do
+            // if one satisfies the index condition on the given index,
+            // that is most likely a letter of the key
+            pseudoplaintext := ShiftDecrypt(strings[i],j);
+            _,iterindex:=Frequencies(pseudoplaintext);
+            
+            if Abs(index-iterindex) le 0.005 then
+                Append(pseudokey,j);
+            end if;
+        end for;
+        printf "%o pseudokey: %o",i,pseudokey;
+        Append(key,pseudokey);
+    end for;
+    return key;        
+end function;

@@ -1,0 +1,206 @@
+// --------------------------------------------------
+// ---------------------- AUTO TEST -----------------
+// --------------------------------------------------
+
+
+
+
+procedure dramaticintro()
+    printf"   ----------------------------------------------------------------------------\n";
+    printf"   -------------------------[ Stark Security Systems ]-------------------------\n";
+    printf"   ----------------------------------------------------------------------------\n";
+    printf"   || the test assumes param = [q,g,h,p], change functions if necessary\n"; 
+    printf"   || it also assumes that if input is valid 'verify' just outputs the secret \n"; 
+    printf"   || if your algorithm prints when executed, this experience will suck real bad\n";
+    printf"   ----------------------------------------------------------------------------\n";
+
+end procedure;
+
+
+
+procedure test1()
+    printf"   [1] FIRST t PARTICIPANTS TRY RETRIVING THE SECRET - should return it\n";
+    printf"   ----------------------------------------------------------------------------\n";
+    printf"   > generating parameters..."; 
+    // ------------ choose p,q ------------
+    q := Random(PrimesUpTo(1000000));
+    p := NextPrime(q);
+    while p mod q ne 1 do p := NextPrime(p);
+    end while;
+    // ------------ choose g,h ------------
+    g := returngenerator(q);
+    h := Modexp(g,Random([1..p]),p);
+    param := [p, g, h, p];
+    // ------------ choose n,t,s -----------
+    n := Random([10..100]);
+    t := Random([3..n]);
+    s := Random([0..q]);
+    printf" . \n"; 
+    // ------------ create shares ----------
+    printf"   > creating shares..."; 
+    W,V := CreateShares(param, s, n, t);
+    printf" . \n"; 
+    // ------------ transparency -----------
+    printf"     > prime p: %o, prime q: %o\n",p,q;
+    printf"     > participants: %o, threshold: %o\n",n,t;
+    printf"     > secret: %o\n",s;
+    // ------------ verify shares ----------
+    printf"   > verifying shares...";
+    secret := VerifyAndRecoverSecret(param, W[1..t], V);
+    printf"  . \n";
+    // ------------ show results -----------
+    printf"   > secret: %o  > ",secret;
+    if secret eq s then printf" CORRECT\n";
+    else 
+        printf" INCORRECT\n";
+        printf"   > secret is      %o\n",s;
+        printf"   > user retrived  %o\n",secret;
+    end if;
+    printf"   ----------------------------------------------------------------------------\n";
+end procedure;
+
+
+procedure test2()
+    printf"   [2] t RANDOM PARTICIPANTS TRY RETRIVING THE SECRET - should return it\n";
+    printf"   ----------------------------------------------------------------------------\n";
+    printf"   > generating parameters..."; 
+    // ------------ choose p,q ------------
+    q := Random(PrimesUpTo(1000000));
+    p := NextPrime(q);
+    while p mod q ne 1 do p := NextPrime(p);
+    end while;
+    // ------------ choose g,h ------------
+    g := returngenerator(q);
+    h := Modexp(g,Random([1..p]),p);
+    param := [p, g, h, p];
+    // ------------ choose n,t,s -----------
+    n := Random([10..100]);
+    t := Random([3..n]);
+    s := Random([0..q]);
+    printf" . \n"; 
+    // ------------ create shares ----------
+    printf"   > creating shares..."; 
+    W,V := CreateShares(param, s, n, t);
+    printf" . \n"; 
+    // ------------ transparency -----------
+    printf"     > prime p: %o, prime q: %o\n",p,q;
+    printf"     > participants: %o, threshold: %o\n",n,t;
+    printf"     > secret: %o\n",s;
+    // ------------ create t participands ----------
+    randoms := [Random([1..n])];
+    while #randoms lt t do 
+        r := Random([1..n]);
+        if not (r in randoms) then    
+            randoms := Append(randoms,r);
+        end if;
+    end while;
+    Wprime := [W[i] : i in randoms];
+    // ------------ verify shares ----------
+    printf"   > verifying shares...";
+    secret := VerifyAndRecoverSecret(param, Wprime, V);
+    printf"  . \n";
+    // ------------ show results -----------
+    printf"   > secret: %o  > ",secret;
+    if secret eq s then printf" CORRECT\n";
+    else 
+        printf" INCORRECT\n";
+        printf"   > secret is      %o\n",s;
+        printf"   > user retrived  %o\n",secret;
+    end if;
+    printf"   ----------------------------------------------------------------------------\n";
+end procedure;
+
+
+procedure test3()
+    printf"   [3] LESS THAN t PARTICIPANTS TRY RETRIVING THE SECRET - should not return it\n";
+    printf"   ----------------------------------------------------------------------------\n";
+    printf"   > generating parameters..."; 
+    // ------------ choose p,q ------------
+    q := Random(PrimesUpTo(1000000));
+    p := NextPrime(q);
+    while p mod q ne 1 do p := NextPrime(p);
+    end while;
+    // ------------ choose g,h ------------
+    g := returngenerator(q);
+    h := Modexp(g,Random([1..p]),p);
+    param := [p, g, h, p];
+    // ------------ choose n,t,s -----------
+    n := Random([10..100]);
+    t := Random([3..n]);
+    s := Random([0..q]);
+    printf" . \n"; 
+    // ------------ create shares ----------
+    printf"   > creating shares..."; 
+    W,V := CreateShares(param, s, n, t);
+    printf" . \n"; 
+    // ------------ transparency -----------
+    printf"     > prime p: %o, prime q: %o\n",p,q;
+    printf"     > participants: %o, threshold: %o\n",n,t;
+    printf"     > secret: %o\n",s;
+    // ------------ verify shares ----------
+    printf"   > verifying shares...";
+    secret := VerifyAndRecoverSecret(param, W[1..t-1], V);
+    printf"  . \n";
+    // ------------ show results -----------
+    printf"   > output: %o  \n",secret;
+    printf"   ----------------------------------------------------------------------------\n";
+end procedure;
+
+
+
+dramaticintro();
+test1();
+test2();
+test3();
+
+
+
+
+// --------------------------------------------------
+// ---------------------- COMPLEMENTARY -------------
+// --------------------------------------------------
+
+function returngenerator(p)
+    
+    for x in [2..p-1] do 
+        broken := false;
+        prod := 1;
+        //printf"   > testing x = %o\n",x;
+        for i in [1..p-2] do
+            prod := (prod * x) mod p;
+            //printf"     > %o\n",prod;
+            if prod eq 1 then 
+                broken := true; break;
+            end if;
+        end for;
+        if broken then continue;
+        else return x;
+        end if;
+    end for;
+    return -1;
+end function;
+
+
+
+function isgenerator(x,p)
+    prod := 1;
+    printf"   > testing x = %o\n",x;
+    for i in [1..p-2] do
+        prod := (prod * x) mod p;
+        printf"     > %o\n",prod;
+        if prod eq 1 then 
+            return false;
+        end if;
+    end for;
+    return true;
+end function;
+
+
+
+
+
+
+
+
+
+// why are you reading down here?

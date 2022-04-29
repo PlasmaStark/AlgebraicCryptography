@@ -1,0 +1,1800 @@
+
+///////////COSTANTI PER FUNZIONI SPARKLE e funzione HexToBit
+
+function HexToBit(s)
+	return ChangeUniverse(
+		Reverse(Intseq(    StringToInteger(s,16), 2, #s*4)    )
+		,GF(2));;
+end function;
+
+
+function BitToHex(s)
+  	if #s eq 0 then return ""; end if;
+        
+    l:=#s;
+	s := IntegerToString(
+		Seqint(    ChangeUniverse(Reverse(s),Integers()),2)    ,16);
+	
+	
+	while #s lt l/4 do  //per evitare che si mangi gli zeri a sx
+			s:= "0" cat s;
+	end while;
+	
+return s; 
+end function;
+
+
+c_spark:=[HexToBit(w) : w in ["B7E15162","BF715880","38B4DA56",
+							  "324E7738","BB1185EB","4F7C7B57",
+							  "CFBFA1C8","C2B3293D"]];
+
+
+
+//////////funzione shift right e shift left\\\\\\\\\\\\\\\\\\
+
+function rightright(x,n)
+    // error if n gt #x, "invalid input in right^2";
+    // - x is a list
+    // - n is an integer
+    // cuts x by n entries on the right
+    //N:=#x; // <- so that the compiler does not calculate it every single time
+    return [ 0 : i in [1..n]] cat x[1..#x-n];
+end function;
+
+
+function leftleft(x,n)
+    // error if n gt #x, "invalid input in left^2";
+    // exactly as above
+    //N:=#x;
+    return x[n+1..#x] cat [ 0 : i in [1..n]];
+end function;
+
+
+
+////////////////funzioni XOR\\\\\\\\\\\\\\\\\\\\
+
+function XOR(a,b)
+	return [a[i]+b[i] : i in [1..#a]];
+end function;
+
+
+function TXOR(a,b,c)
+	return [a[i]+b[i]+c[i] : i in [1..#a]];
+end function;
+
+
+function QXOR(a,b,c,d)
+	return [a[i]+b[i]+c[i]+d[i] : i in [1..#a]];
+end function;
+
+//////////////funzione padding\\\\\\\\\\\\\\\\\\\\
+
+function pad(M, r)
+	//M is a string of bits and r is an integer (it is the subscript of ped) such that #M < r
+	i := (-#M -1) mod r;
+	
+	return M cat [1] cat [0 : j in [1..i]];
+end function;
+
+
+
+//////////////funzioni parsing e state\\\\\\\\\\\\\\\\\\\\
+
+
+function Parsing32(s)
+
+	//s è una sequenza di dimensione divisibile per 64 (coppie da 32)
+	
+	// error if #s mod 64 ne 0, "invalid input in Parsing32";
+
+	parsd:= [s[1+(k-1)*32 .. (k)*32 ]: k in [1.. #s/32 by 2]];
+	parsp:= [s[1+(k-1)*32 .. (k)*32 ]: k in [2.. #s/32 by 2]];
+	
+	return [<parsd[i],parsp[i]> : i in [1..#s/64]];
+
+end function; 
+
+//funzione parsingstate
+
+function ParsState(s)
+
+//funzione che manda una lista di parole nella stessa in little-endian
+
+	// - if (m_0, ... , m_n-1) is an input to SPARKLE, it is mapped to the state words via state(k)
+	//   (n = 256, 384, 512)
+
+	// indeces: (32k + 24) ----- (32k+31) , (32k + 16) ----- (32k+23) , (32k + 0) ----- (32k+7) , .....
+ 
+ state:=Parsing32(s); //così li ho già divisi nel numero giusto di stati, non resta che sistemarne ciascuno.
+ 
+ for i in [1..#state] do
+
+	// todo: rimuovere i cat!!!(?)
+ 
+   state[i][1]:=state[i][1][25..32] cat state[i][1][17..24] cat state[i][1][9..16] cat state[i][1][1..8];
+   state[i][2]:=state[i][2][25..32] cat state[i][2][17..24] cat state[i][2][9..16] cat state[i][2][1..8];
+ 
+ end for;
+ 
+return state;
+ 
+end function;
+
+
+
+function InvParsState(pair_seq)
+
+	for i in [1..#pair_seq] do
+		// todo: rimuovere i cat!!!(?)
+		pair_seq[i][1]:=pair_seq[i][1][25..32] cat pair_seq[i][1][17..24] cat pair_seq[i][1][9..16] cat pair_seq[i][1][1..8];
+		pair_seq[i][2]:=pair_seq[i][2][25..32] cat pair_seq[i][2][17..24] cat pair_seq[i][2][9..16] cat pair_seq[i][2][1..8];
+	end for;
+	return &cat [ pair_seq[s][1] cat pair_seq[s][2] : s in [1..#pair_seq]];
+
+end function;
+
+
+//////////////funzioni rho\\\\\\\\\\\\\\\\\\\\
+
+//S,D sono sequenze di bit con la stessa lunghezza, che deve essere pari.
+
+function rho1(S,D)
+
+	// error if #S ne #D, "invalid input in rho1";
+	// error if #S mod 2 ne 0, "invalid input in rho1, odd lenght";
+	
+	S:= S[#S/2+1 .. #S] cat XOR(S[#S/2+1 .. #S],S[1 .. #S/2]); ////FeistelSwap.
+	
+	return XOR(S,D);
+
+end function;
+
+
+
+function invrho1(S,D)  ///sarebbe rho1'
+
+	//  error if #S ne #D, "invalid input in invrho1";
+	// error if #S mod 2 ne 0, "invalid input in invrho1, odd lenght";
+	
+	FS:= S[#S/2+1 .. #S] cat XOR(S[#S/2+1 .. #S],S[1 .. #S/2]); ////FeistelSwap.
+	
+	return TXOR(FS,S,D);
+
+end function;
+
+
+
+function rho2(S,D)
+	// error if #S ne #D, "invalid input in rho2";
+	return XOR(S,D);
+end function;
+
+
+
+///////////////funzioni L\\\\\\\\\\\\\\\\\\\\\\
+
+
+function L4(s)
+
+	//s is a sequence [<x0,y0>,..,<x4,y4>] and len(xi)=32
+
+	tx := XOR(s[1][1], s[2][1]);
+	ty := XOR(s[1][2], s[2][2]);
+
+	tx := Rotate( XOR(tx,leftleft(tx,16)), -16);
+	ty := Rotate( XOR(ty,leftleft(ty,16)), -16);
+
+	s[3][2] := TXOR(s[3][2], s[1][2], tx);
+	s[4][2] := TXOR(s[4][2], s[2][2], tx);
+
+	s[3][1] := TXOR(s[3][1], s[1][1], ty);
+	s[4][1] := TXOR(s[4][1], s[2][1], ty);
+
+return[<s[4][1],s[4][2]>, <s[3][1],s[3][2]>, <s[1][1],s[1][2]>, <s[2][1],s[2][2]>];
+
+end function;
+
+
+
+function L6(s)
+
+	//s is a sequence [<x0,y0>,..,<x5,y5>] and len(xi)=32
+
+	tx := TXOR(s[1,1],s[2,1],s[3,1]);
+	ty := TXOR(s[1,2],s[2,2],s[3,2]);
+
+	tx := Rotate( XOR(tx,leftleft(tx,16)), -16);
+	ty := Rotate( XOR(ty,leftleft(ty,16)), -16);
+
+	s[4][2] := TXOR(s[4][2], s[1][2], tx);
+	s[5][2] := TXOR(s[5][2], s[2][2], tx);
+	s[6][2] := TXOR(s[6][2], s[3][2], tx);
+
+	s[4][1] := TXOR(s[4][1], s[1][1], ty);
+	s[5][1] := TXOR(s[5][1], s[2][1], ty);
+	s[6][1] := TXOR(s[6][1], s[3][1], ty);
+
+return[<s[5][1],s[5][2]>, <s[6][1],s[6][2]>, <s[4][1],s[4][2]>, <s[1][1],s[1][2]>, <s[2][1],s[2][2]>, <s[3][1],s[3][2]>];
+
+end function;
+
+
+
+function L8(s)
+
+	//s is a sequence [<x0,y0>,..,<x7,y7>] and len(xi)=32
+
+	tx := QXOR(s[1][1], s[2][1], s[3][1], s[4][1]);
+	ty := QXOR(s[1][2], s[2][2], s[3][2], s[4][2]);
+
+	tx := Rotate( XOR(tx,leftleft(tx,16)), -16);
+	ty := Rotate( XOR(ty,leftleft(ty,16)), -16);
+
+	s[5][2] := TXOR(s[5][2],s[1][2],tx);
+	s[6][2] := TXOR(s[6][2],s[2][2],tx);
+	s[7][2] := TXOR(s[7][2],s[3][2],tx);
+	s[8][2] := TXOR(s[8][2],s[4][2],tx);
+
+	s[5][1] := TXOR(s[5][1],s[1][1],ty);
+	s[6][1] := TXOR(s[6][1],s[2][1],ty);
+	s[7][1] := TXOR(s[7][1],s[3][1],ty);
+	s[8][1] := TXOR(s[8][1],s[4][1],ty);
+
+return[<s[6][1],s[6][2]>,<s[7][1],s[7][2]>,<s[8][1],s[8][2]>,<s[5][1],s[5][2]>,<s[1][1],s[1][2]>,<s[2][1],s[2][2]>,<s[3][1],s[3][2]>,<s[4][1],s[4][2]>];
+
+end function;
+
+
+
+////////////////funzione A_c\\\\\\\\\\\\\\\\\\\\\
+
+
+function A(x,y,c)
+
+//x,y,c sono sequenze di 32 bit.
+
+//sono quattro step identici a meno delle costanti di rotazione
+//forse si potrebbero fare in un ciclo for, o con uno switch per risparmiare righe di codice
+
+////PRIMO STEP
+
+intx:= Seqint(ChangeUniverse(Reverse(x),Integers()),2);
+intry:= Seqint(ChangeUniverse(Reverse(Rotate(y,31)),Integers()),2);
+
+sum_32:= (intx + intry) mod 2^32;
+
+x:= ChangeUniverse(Reverse(Intseq(sum_32,2,32)),GF(2));
+
+y:= XOR(y,Rotate(x,24));
+
+x:= XOR(x,c);
+
+
+////SECONDO STEP
+
+intx:= Seqint(ChangeUniverse(Reverse(x),Integers()),2);
+intry:= Seqint(ChangeUniverse(Reverse(Rotate(y,17)),Integers()),2);
+
+sum_32:= (intx + intry) mod 2^32;
+
+x:= ChangeUniverse(Reverse(Intseq(sum_32,2,32)),GF(2));
+
+y:= XOR(y,Rotate(x,17));
+
+x:= XOR(x,c);
+
+
+////TERZO STEP
+
+intx:= Seqint(ChangeUniverse(Reverse(x),Integers()),2);
+intry:= Seqint(ChangeUniverse(Reverse(y),Integers()),2);
+
+sum_32:= (intx + intry) mod 2^32;
+
+x:= ChangeUniverse(Reverse(Intseq(sum_32,2,32)),GF(2));
+
+y:= XOR(y,Rotate(x,31));
+
+x:= XOR(x,c);
+
+
+////QUARTO STEP
+
+
+intx:= Seqint(ChangeUniverse(Reverse(x),Integers()),2);
+intry:= Seqint(ChangeUniverse(Reverse(Rotate(y,24)),Integers()),2);
+
+sum_32:= (intx + intry) mod 2^32;
+
+x:= ChangeUniverse(Reverse(Intseq(sum_32,2,32)),GF(2));
+
+y:= XOR(y,Rotate(x,16));
+
+x:= XOR(x,c);
+
+
+return <x,y>;
+
+end function;
+
+
+
+
+////////////////funzioni SPARKLE\\\\\\\\\\\\\\\\\\\\\
+
+
+function SPARKLE_256(pair_seq,ns)
+
+//pair_seq è una sequenza di coppie, mentre ns un intero
+
+for s in [0..ns-1] do
+
+ pair_seq[1][2]:= XOR(pair_seq[1][2],c_spark[s mod 8 +1]);
+ 
+ pair_seq[2][2]:= XOR(pair_seq[2][2], Reverse(Intseq(s mod 2^32,2,32)));
+ 
+ for i in [1..4] do
+ 
+   pair_seq[i]:= A(pair_seq[i][1],pair_seq[i][2],c_spark[i]);
+   
+ end for;
+ 
+ pair_seq:= L4(pair_seq);
+
+end for;
+ 
+return pair_seq;
+
+end function;
+
+
+
+
+function SPARKLE_384(pair_seq,ns)
+
+/*"sono in Sparkle";
+"lunghezza di pair_seq:"; #pair_seq; pair_seq;*/
+
+for s in [0..ns-1] do
+
+ pair_seq[1][2]:= XOR(pair_seq[1][2],c_spark[(s mod 8) + 1]);
+ 
+ pair_seq[2][2]:= XOR(pair_seq[2][2], Reverse(Intseq(s mod 2^32,2,32)));
+ 
+ //"siamo al round"; s; "con lunghezza"; #pair_seq;
+ 
+ for i in [1..6] do
+ 
+   pair_seq[i]:= A(pair_seq[i][1],pair_seq[i][2],c_spark[i]);
+   
+   //"aggiorno il valore con"; pair_seq[i];
+   
+ end for;
+ 
+ pair_seq:= L6(pair_seq);
+
+end for;
+ 
+return pair_seq;
+
+end function;
+ 
+
+
+
+function SPARKLE_512(pair_seq,ns)
+
+for s in [0..ns-1] do
+
+ pair_seq[1][2]:= XOR(pair_seq[1][2],c_spark[s mod 8 +1]);
+ 
+ pair_seq[2][2]:= XOR(pair_seq[2][2], Reverse(Intseq(s mod 2^32,2,32)));
+ 
+ for i in [1..8] do
+ 
+   pair_seq[i]:= A(pair_seq[i][1],pair_seq[i][2],c_spark[i]);
+   
+ end for;
+ 
+ pair_seq:= L8(pair_seq);
+
+end for;
+ 
+return pair_seq;
+
+end function;
+
+
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+//////////////////FUNZIONI SCHWAEMM\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+
+//////////////////ENCRYPTION\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+function Schwaemm256_128Enc(K,N,A,M)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+C:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 256 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 256);
+		ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));      
+       else
+		n := #A mod 256;
+		B := Partition(A[1..(#A-n)], 256);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 256);
+		    ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+               
+               end if;
+	end if;
+end if;
+
+
+if #M gt 0 then
+
+    M:= HexToBit(M);
+
+ 	if #M lt 256 then 
+ 	  
+ 	  t:=#M;
+ 	  M:=[M];
+ 	  M[#M] := pad(M[#M], 256);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+ 	
+ 	else
+	
+		n := #M mod 256;
+		t := n;
+		B := Partition(M[1..(#M-n)], 256);
+	
+		if n ne 0 then
+		
+			 M:= B cat [M[(#M-n+1)..#M]];
+			 M[#M] := pad(M[#M], 256);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+
+		else 
+		
+		         t:=256;
+		 	 M:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_384(ParsState(N cat K),11));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..256],A[j]),S[257..384] cat S[257..384]) cat S[257..384];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_384(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if message is empty
+    
+    wtemp:= XOR(S[257..384],ConstA);
+
+    temp:=  XOR(rho1(S[1..256],A[#A]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));
+ 
+ end if;
+
+ ///Encrypting 
+    
+ if #M gt 0 then 
+ 
+    for j in [1..#M-1] do
+    
+       C[j]:= rho2(S[1..256],M[j]);
+       
+       temp:= XOR(rho1(S[1..256],M[j]), S[257..384] cat S[257..384]) cat S[257..384];
+       
+       S:= InvParsState(SPARKLE_384(ParsState(temp),7));
+       
+    end for;
+    
+    C[#M]:= rho2(S[1..256],M[#M])[1..t];     
+     
+     ///Finalization
+    
+    wtemp:= XOR(S[257..384],ConstM);
+    temp:=  XOR(rho1(S[1..256],M[#M]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));   
+    
+    end if;
+    
+  return BitToHex(&cat C) , BitToHex(XOR(S[257..384],K));
+  
+end function; 
+       
+       
+
+
+
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+
+
+
+function Schwaemm192_192Enc(K,N,A,M)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+C:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 192 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 192);
+		ConstA := XOR([GF(2)!0 : i in [1..192]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));      
+       else
+		n := #A mod 192;
+		B := Partition(A[1..(#A-n)], 192);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 192);
+		    ConstA := XOR([GF(2)!0 : i in [1..192]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+               
+               end if;
+	end if;
+end if;
+
+
+if #M gt 0 then
+
+    M:= HexToBit(M);
+
+ 	if #M lt 192 then 
+ 	
+ 	  t:=#M;
+ 	  M:=[M];
+ 	  M[#M] := pad(M[#M], 192);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3)); 
+ 	
+ 	else
+		n := #M mod 192;
+		t := n;
+		B := Partition(M[1..(#M-n)], 192);
+	
+		if n ne 0 then
+			 M:= B cat [M[(#M-n+1)..#M]];
+			 M[#M] := pad(M[#M], 192);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3)); 
+
+		else 
+		         t:=192;
+		 	 M:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3)); 
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_384(ParsState(N cat K),11));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..192],A[j]),S[193..384]) cat S[193..384];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_384(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if message is empty
+    
+    wtemp:= XOR(S[193..384],ConstA);
+
+    temp:=  XOR(rho1(S[1..192],A[#A]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));
+ 
+ end if;
+
+ ///Encrypting 
+    
+ if #M gt 0 then 
+ 
+    for j in [1..#M-1] do
+    
+       C[j]:= rho2(S[1..192],M[j]);
+       
+       temp:= XOR(rho1(S[1..192],M[j]), S[193..384] ) cat S[193..384];
+       
+       S:= InvParsState(SPARKLE_384(ParsState(temp),7));
+       
+    end for;
+    
+    C[#M]:= rho2(S[1..192],M[#M])[1..t];     
+     
+     ///Finalization
+    
+    wtemp:= XOR(S[193..384],ConstM);
+    temp:=  XOR(rho1(S[1..192],M[#M]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));   
+    
+    end if;
+    
+  return BitToHex(&cat C) , BitToHex(XOR(S[193..384],K));
+  
+end function; 
+
+
+
+
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+          
+              
+       
+function Schwaemm128_128Enc(K,N,A,M)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+C:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 128 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 128);
+		ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));      
+       else
+		n := #A mod 128;
+		B := Partition(A[1..(#A-n)], 128);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 128);
+		    ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+               
+               end if;
+	end if;
+end if;
+
+
+if #M gt 0 then
+
+    M:= HexToBit(M);
+
+ 	if #M lt 128 then 
+ 	
+ 	  t:=#M;
+ 	  M:=[M];
+ 	  M[#M] := pad(M[#M], 128);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2)); 
+ 	
+ 	else
+		n := #M mod 128;
+		t := n;
+		B := Partition(M[1..(#M-n)], 128);
+	
+		if n ne 0 then
+			 M:= B cat [M[(#M-n+1)..#M]];
+			 M[#M] := pad(M[#M], 128);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+
+		else 
+		         t:=128;
+		 	 M:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2)); 
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_256(ParsState(N cat K),10));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..128],A[j]),S[129..256]) cat S[129..256];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_256(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if message is empty
+    
+    wtemp:= XOR(S[129..256],ConstA);
+
+    temp:=  XOR(rho1(S[1..128],A[#A]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_256(ParsState(temp),10));
+ 
+ end if;
+
+ ///Encrypting 
+    
+ if #M gt 0 then 
+ 
+    for j in [1..#M-1] do
+    
+       C[j]:= rho2(S[1..128],M[j]);
+       
+       temp:= XOR(rho1(S[1..128],M[j]), S[129..256] ) cat S[129..256];
+       
+       S:= InvParsState(SPARKLE_256(ParsState(temp),7));
+       
+    end for;
+    
+    C[#M]:= rho2(S[1..128],M[#M])[1..t];     
+     
+     ///Finalization
+    
+    wtemp:= XOR(S[129..256],ConstM);
+    temp:=  XOR(rho1(S[1..128],M[#M]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_256(ParsState(temp),10));   
+    
+    end if;
+    
+  return BitToHex(&cat C) , BitToHex(XOR(S[129..256],K));
+  
+end function; 
+       
+       
+       
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+
+
+
+function Schwaemm256_256Enc(K,N,A,M)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+C:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 256 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 256);
+		ConstA := XOR([GF(2)!0 : i in [1..256]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));      
+       else
+		n := #A mod 256;
+		B := Partition(A[1..(#A-n)], 256);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 256);
+		    ConstA := XOR([GF(2)!0 : i in [1..256]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+               
+               end if;
+	end if;
+end if;
+
+
+if #M gt 0 then
+
+    M:= HexToBit(M);
+
+ 	if #M lt 256 then 
+ 	
+ 	  t:=#M;
+ 	  M:=[M];
+ 	  M[#M] := pad(M[#M], 256);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4)); 
+ 	
+ 	else
+		n := #M mod 256;
+		t := n;
+		B := Partition(M[1..(#M-n)], 256);
+	
+		if n ne 0 then
+			 M:= B cat [M[(#M-n+1)..#M]];
+			 M[#M] := pad(M[#M], 256);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+
+		else 
+		         t:=256;
+		 	 M:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4)); 
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_512(ParsState(N cat K),12));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..256],A[j]),S[257..512]) cat S[257..512];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_512(ParsState(temp),8));
+      
+    end for;
+   
+   ///Finalization if message is empty
+    
+    wtemp:= XOR(S[257..512],ConstA);
+
+    temp:=  XOR(rho1(S[1..256],A[#A]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_512(ParsState(temp),12));
+ 
+ end if;
+
+ ///Encrypting 
+    
+ if #M gt 0 then 
+ 
+    for j in [1..#M-1] do
+    
+       C[j]:= rho2(S[1..256],M[j]);
+       
+       temp:= XOR(rho1(S[1..256],M[j]), S[257..512] ) cat S[257..512];
+       
+       S:= InvParsState(SPARKLE_512(ParsState(temp),8));
+       
+    end for;
+    
+    C[#M]:= rho2(S[1..256],M[#M])[1..t];     
+     
+     ///Finalization
+    
+    wtemp:= XOR(S[257..512],ConstM);
+    temp:=  XOR(rho1(S[1..256],M[#M]), wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_512(ParsState(temp),12));   
+    
+    end if;
+    
+  return BitToHex(&cat C) , BitToHex(XOR(S[257..512],K));
+  
+end function; 
+       
+       
+
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+
+/////////////////////DECRYPTION\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+
+function Schwaemm256_128Dec(K,N,A,C,T)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+T:= HexToBit(T);
+M:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 256 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 256);
+		ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));      
+       else
+		n := #A mod 256;
+		B := Partition(A[1..(#A-n)], 256);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 256);
+		    ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+               
+               end if;
+	end if;
+end if;
+
+
+if #C gt 0 then
+
+    C:= HexToBit(C);
+
+ 	if #C lt 256 then 
+ 	  
+ 	  t:=#C;
+ 	  C:=[C];
+ 	  C[#C] := pad(C[#C], 256);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+ 	
+ 	else
+	
+		n := #C mod 256;
+		t := n;
+		B := Partition(C[1..(#C-n)], 256);
+	
+		if n ne 0 then
+		
+			 C:= B cat [C[(#C-n+1)..#C]];
+			 C[#C] := pad(C[#C], 256);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+
+		else 
+		
+		         t:=256;
+		 	 C:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_384(ParsState(N cat K),11));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..256],A[j]),S[257..384] cat S[257..384]) cat S[257..384];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_384(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if ciphertext is empty
+    
+    wtemp:= XOR(S[257..384],ConstA);
+
+    temp:=  XOR(rho1(S[1..256],A[#A]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));
+ 
+ end if;
+
+ ///Decrypting 
+    
+ if #C gt 0 then 
+ 
+    for j in [1..#C-1] do
+    
+       M[j]:= rho2(S[1..256],C[j]);
+       
+       temp:= XOR(invrho1(S[1..256],C[j]), S[257..384] cat S[257..384]) cat S[257..384];
+       
+       S:= InvParsState(SPARKLE_384(ParsState(temp),7));
+       
+    end for;
+    
+    M[#C]:= rho2(S[1..256],C[#C])[1..t];     
+     
+     ///Finalization and tag verification
+    
+   if t lt 256 then  
+    
+    wtemp:= XOR(S[257..384],ConstM);
+    temp:=  XOR(rho1(S[1..256],pad(M[#M],256)), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));  
+    
+   else 
+   
+    wtemp:= XOR(S[257..384],ConstM);
+    temp:=  XOR(invrho1(S[1..256],C[#C]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));  
+   
+   end if;
+    
+  end if;
+  
+  if XOR(S[257..384],K) eq T then
+    
+    return BitToHex(&cat M);
+  
+  else return "\perp";
+  
+  end if;
+  
+end function; 
+
+
+
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+
+
+
+
+function Schwaemm192_192Dec(K,N,A,C,T)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+T:= HexToBit(T);
+M:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 192 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 192);
+		ConstA := XOR([GF(2)!0 : i in [1..192]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));      
+       else
+		n := #A mod 192;
+		B := Partition(A[1..(#A-n)], 192);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 192);
+		    ConstA := XOR([GF(2)!0 : i in [1..192]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+               
+               end if;
+	end if;
+end if;
+
+
+if #C gt 0 then
+
+    C:= HexToBit(C);
+
+ 	if #C lt 192 then 
+ 	  
+ 	  t:=#C;
+ 	  C:=[C];
+ 	  C[#C] := pad(C[#C], 192);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+ 	
+ 	else
+	
+		n := #C mod 192;
+		t := n;
+		B := Partition(C[1..(#C-n)], 192);
+	
+		if n ne 0 then
+		
+			 C:= B cat [C[(#C-n+1)..#C]];
+			 C[#C] := pad(C[#C], 192);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+
+		else 
+		
+		         t:=192;
+		 	 C:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,192)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,192)),GF(2)),3));
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_384(ParsState(N cat K),11));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..192],A[j]),S[193..384] cat S[193..384]) cat S[193..384];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_384(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if ciphertext is empty
+    
+    wtemp:= XOR(S[193..384],ConstA);
+
+    temp:=  XOR(rho1(S[1..192],A[#A]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));
+ 
+ end if;
+
+ ///Decrypting 
+    
+ if #C gt 0 then 
+ 
+    for j in [1..#C-1] do
+    
+       M[j]:= rho2(S[1..192],C[j]);
+       
+       temp:= XOR(invrho1(S[1..192],C[j]), S[193..384] cat S[193..384]) cat S[193..384];
+       
+       S:= InvParsState(SPARKLE_384(ParsState(temp),7));
+       
+    end for;
+    
+    M[#C]:= rho2(S[1..192],C[#C])[1..t];     
+     
+     ///Finalization and tag verification
+    
+   if t lt 256 then  
+    
+    wtemp:= XOR(S[193..384],ConstM);
+    temp:=  XOR(rho1(S[1..192],pad(M[#M],192)), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));  
+    
+   else 
+   
+    wtemp:= XOR(S[193..384],ConstM);
+    temp:=  XOR(invrho1(S[1..192],C[#C]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_384(ParsState(temp),11));  
+   
+   end if;
+    
+  end if;
+  
+  if XOR(S[193..384],K) eq T then
+    
+    return BitToHex(&cat M);
+  
+  else return "\perp";
+  
+  end if;
+  
+end function; 
+
+
+
+
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+
+
+
+
+function Schwaemm128_128Dec(K,N,A,C,T)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+T:= HexToBit(T);
+M:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 128 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 128);
+		ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));      
+       else
+		n := #A mod 128;
+		B := Partition(A[1..(#A-n)], 128);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 128);
+		    ConstA := XOR([GF(2)!0 : i in [1..128]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+               
+               end if;
+	end if;
+end if;
+
+
+if #C gt 0 then
+
+    C:= HexToBit(C);
+
+ 	if #C lt 128 then 
+ 	  
+ 	  t:=#C;
+ 	  C:=[C];
+ 	  C[#C] := pad(C[#C], 128);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+ 	
+ 	else
+	
+		n := #C mod 128;
+		t := n;
+		B := Partition(C[1..(#C-n)], 128);
+	
+		if n ne 0 then
+		
+			 C:= B cat [C[(#C-n+1)..#C]];
+			 C[#C] := pad(C[#C], 128);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+
+		else 
+		
+		         t:=128;
+		 	 C:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,128)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,128)),GF(2)),2));
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_256(ParsState(N cat K),10));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..128],A[j]),S[129..256] cat S[129..256]) cat S[129..256];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_256(ParsState(temp),7));
+      
+    end for;
+   
+   ///Finalization if ciphertext is empty
+    
+    wtemp:= XOR(S[129..256],ConstA);
+
+    temp:=  XOR(rho1(S[1..128],A[#A]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_256(ParsState(temp),10));
+ 
+ end if;
+
+ ///Decrypting 
+    
+ if #C gt 0 then 
+ 
+    for j in [1..#C-1] do
+    
+       M[j]:= rho2(S[1..128],C[j]);
+       
+       temp:= XOR(invrho1(S[1..128],C[j]), S[129..256] cat S[129..256]) cat S[129..256];
+       
+       S:= InvParsState(SPARKLE_256(ParsState(temp),7));
+       
+    end for;
+    
+    M[#C]:= rho2(S[1..128],C[#C])[1..t];     
+     
+     ///Finalization and tag verification
+    
+   if t lt 128 then  
+    
+    wtemp:= XOR(S[129..256],ConstM);
+    temp:=  XOR(rho1(S[1..128],pad(M[#M],128)), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_256(ParsState(temp),10));  
+    
+   else 
+   
+    wtemp:= XOR(S[129..256],ConstM);
+    temp:=  XOR(invrho1(S[1..128],C[#C]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_256(ParsState(temp),10));  
+   
+   end if;
+    
+  end if;
+  
+  if XOR(S[129..256],K) eq T then
+    
+    return BitToHex(&cat M);
+  
+  else return "\perp";
+  
+  end if;
+  
+end function;
+
+
+
+
+////////////////////////////////////////////////////////////////
+/*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\*/
+////////////////////////////////////////////////////////////////
+
+
+
+
+function Schwaemm256_256Dec(K,N,A,C,T)
+
+////Padding the associated data and message
+
+K:= HexToBit(K);
+N:= HexToBit(N);
+T:= HexToBit(T);
+M:=[];
+
+if #A gt 0 then
+
+     A:= HexToBit(A);
+       
+       if #A lt 256 then 
+       
+        	A:=[A];
+        	A[#A] := pad(A[#A], 256);
+		ConstA := XOR([GF(2)!0 : i in [1..256]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));      
+       else
+		n := #A mod 256;
+		B := Partition(A[1..(#A-n)], 256);
+		
+		if n ne 0 then
+		
+	            A:= B cat [A[(#A-n+1)..#A]];
+		    A[#A] := pad(A[#A], 256);
+		    ConstA := XOR([GF(2)!0 : i in [1..256]], leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+                
+                else
+                
+                    A:=B;
+                    ConstA := XOR(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+               
+               end if;
+	end if;
+end if;
+
+
+if #C gt 0 then
+
+    C:= HexToBit(C);
+
+ 	if #C lt 256 then 
+ 	  
+ 	  t:=#C;
+ 	  C:=[C];
+ 	  C[#C] := pad(C[#C], 256);
+ 	  ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+ 	
+ 	else
+	
+		n := #C mod 256;
+		t := n;
+		B := Partition(C[1..(#C-n)], 256);
+	
+		if n ne 0 then
+		
+			 C:= B cat [C[(#C-n+1)..#C]];
+			 C[#C] := pad(C[#C], 256);
+			 ConstM := XOR(ChangeUniverse(Reverse(Intseq(2,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+
+		else 
+		
+		         t:=256;
+		 	 C:= B;
+		 	 ConstM := XOR(ChangeUniverse(Reverse(Intseq(3,2,256)),GF(2)), leftleft(ChangeUniverse(Reverse(Intseq(1,2,256)),GF(2)),4));
+		 	 
+
+		end if;
+ 	end if;
+end if;
+
+ ////State initialization
+
+ S:= InvParsState(SPARKLE_512(ParsState(N cat K),12));
+ 
+ 
+ ////Processing of associated data
+ 
+ 
+ if #A gt 0 then
+ 
+    for j in [1..#A-1] do
+      
+      temp:=  XOR(rho1(S[1..256],A[j]),S[257..512] cat S[257..512]) cat S[257..512];  //appoggio per 
+                                                                                      //renderlo leggibile
+      
+      S:=  InvParsState(SPARKLE_512(ParsState(temp),8));
+      
+    end for;
+   
+   ///Finalization if ciphertext is empty
+    
+    wtemp:= XOR(S[257..512],ConstA);
+
+    temp:=  XOR(rho1(S[1..256],A[#A]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_512(ParsState(temp),12));
+ 
+ end if;
+
+ ///Decrypting 
+    
+ if #C gt 0 then 
+ 
+    for j in [1..#C-1] do
+    
+       M[j]:= rho2(S[1..256],C[j]);
+       
+       temp:= XOR(invrho1(S[1..256],C[j]), S[257..512] cat S[257..512]) cat S[257..512];
+       
+       S:= InvParsState(SPARKLE_512(ParsState(temp),8));
+       
+    end for;
+    
+    M[#C]:= rho2(S[1..256],C[#C])[1..t];     
+     
+     ///Finalization and tag verification
+    
+   if t lt 256 then  
+    
+    wtemp:= XOR(S[257..512],ConstM);
+    temp:=  XOR(rho1(S[1..256],pad(M[#M],256)), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_512(ParsState(temp),12));  
+    
+   else 
+   
+    wtemp:= XOR(S[257..512],ConstM);
+    temp:=  XOR(invrho1(S[1..256],C[#C]), wtemp cat wtemp) cat wtemp;
+     
+    S:= InvParsState(SPARKLE_512(ParsState(temp),12));  
+   
+   end if;
+    
+  end if;
+  
+  if XOR(S[257..512],K) eq T then
+    
+    return BitToHex(&cat M);
+  
+  else return "\perp";
+  
+  end if;
+  
+end function;
+
+
+
+
+       
+       
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+//////////////////////HASH FUNCTION\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+
+function lperm(x)
+
+ x:= x[17..32] cat XOR(x[1..16],x[17..32]);
+ 
+ return x;
+ 
+end function;
+
+
+//////////function M
+
+
+function funM(pair_seq)
+
+ w:= #pair_seq;
+ 
+ ty:= [GF(2)!0 : i in [1..32]];
+ tx:= [GF(2)!0 : i in [1..32]]; 
+ 
+ for i in [1..w] do
+ 
+  ty:= XOR(ty,pair_seq[i,2]);
+  tx:= XOR(tx,pair_seq[i,1]);
+  
+ end for;
+ 
+ pair_seq:= [<XOR(pair_seq[s,1],lperm(ty)),XOR(pair_seq[s,2],lperm(tx))> : s in [1..w]];
+ 
+return pair_seq;
+
+end function;
+
+
+
+
+
+
+
+///////////HASH FUNCTION\\\\\\\\\\\\\
+
+
+
+function Esch256(M)
+
+////Padding
+
+if #M gt 0 then
+
+	M:= HexToBit(M);
+
+ 	if #M lt 128 then 
+ 	  
+ 	  //t:=#M;
+ 	  P:=[M];
+ 	  P[#P] := pad(P[#P], 128);
+ 	  ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,384)),GF(2)),192);
+ 	  
+ 	
+ 	else
+	
+		n := #M mod 128;
+		//t := n;
+		B := Partition(M[1..(#M-n)], 128);
+	
+		if n ne 0 then
+		
+			 P:= B cat [M[(#M-n+1)..#M]];
+			 P[#P] := pad(P[#P], 128);
+			 ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,384)),GF(2)),192);
+
+		else 
+		
+		 	 P:= B;
+		 	 ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(2,2,384)),GF(2)),192);
+		 	 
+
+		end if;
+ 	end if;
+else
+
+   P:=[[GF(2)!1] cat [0 : i in [1..127]]]; 
+   ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,384)),GF(2)),192);
+   
+   
+   
+end if;
+
+////Absorption
+
+S:=[GF(2)!0: i in [1..384]];
+Q:=[];
+
+for j in [1..#P-1] do 
+
+    Q[j]:= InvParsState(funM( ParsState(P[j] cat [GF(2)!0 : i in [1..64]])  ));
+   
+    temp:= XOR(S,Q[j] cat [GF(2)!0: i in [1..192]]);
+    
+    S:= InvParsState(SPARKLE_384(ParsState(temp),7)); 
+    
+end for;
+
+
+ Q[#P]:= InvParsState(funM( ParsState(P[#P] cat [GF(2)!0 : i in [1..64]])  ));
+ 
+ temp:= TXOR(S,Q[#P] cat [GF(2)!0: i in [1..192]],ConstM);
+    
+ S:= InvParsState(SPARKLE_384(ParsState(temp),11));
+ 
+ ////////squeezing
+ 
+ D:= S[1..128];
+ 
+ S:= InvParsState(SPARKLE_384(ParsState(S),7));
+ 
+ D:= D cat S[1..128];
+ 
+ return BitToHex(D);
+
+end function;
+       
+       
+       
+       
+       
+       
+       
+function Esch384(M)
+
+////Padding
+
+if #M gt 0 then
+
+	M:= HexToBit(M);
+
+ 	if #M lt 128 then 
+ 	  
+ 	  //t:=#M;
+ 	  P:=[M];
+ 	  P[#P] := pad(P[#P], 128);
+ 	  ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,512)),GF(2)),256);
+ 	  
+ 	
+ 	else
+	
+		n := #M mod 128;
+		//t := n;
+		B := Partition(M[1..(#M-n)], 128);
+	
+		if n ne 0 then
+		
+			 P:= B cat [M[(#M-n+1)..#M]];
+			 P[#P] := pad(P[#P], 128);
+			 ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,512)),GF(2)),256);
+
+		else 
+		
+		 	 P:= B;
+		 	 ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(2,2,512)),GF(2)),256);
+		 	 
+
+		end if;
+ 	end if;
+else
+
+   P:=[[GF(2)!1] cat [0 : i in [1..127]]]; 
+   ConstM:= leftleft(ChangeUniverse(Reverse(Intseq(1,2,512)),GF(2)),256);
+   
+   
+   
+end if;
+
+////Absorption
+
+S:=[GF(2)!0: i in [1..512]];
+Q:=[];
+
+for j in [1..#P-1] do 
+
+    Q[j]:= InvParsState(funM( ParsState(P[j] cat [GF(2)!0 : i in [1..128]])  ));
+   
+    temp:= XOR(S,Q[j] cat [GF(2)!0: i in [1..256]]);
+    
+    S:= InvParsState(SPARKLE_512(ParsState(temp),8)); 
+    
+end for;
+
+ Q[#P]:= InvParsState(funM( ParsState(P[#P] cat [GF(2)!0 : i in [1..128]])  ));
+ temp:= TXOR(S,Q[#P] cat [GF(2)!0: i in [1..256]],ConstM);
+    
+ S:= InvParsState(SPARKLE_512(ParsState(temp),12));
+ 
+ ////////squeezing
+ 
+ D:= S[1..128];
+ 
+ S:= InvParsState(SPARKLE_512(ParsState(S),8));
+ 
+ D:= D cat S[1..128];
+ 
+ S:= InvParsState(SPARKLE_512(ParsState(S),8));
+ 
+ D:= D cat S[1..128];
+ 
+ return BitToHex(D);
+
+end function;

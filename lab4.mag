@@ -1,0 +1,142 @@
+// ----------- [EXERCISE 1] ------------------
+
+function DivideBySubfield(F,alpha)
+    //-F is a finite field
+    //-alpha is a primitive element of F
+
+    c := #F;
+    p := Characteristic(F);
+    n := Ilog(p,c);
+    DivisorsOfn := [k : k in [1..n] | n mod k eq 0];
+
+    // echofield is a copy of the finite field
+    // Sub is the output
+    echofield := {f : f in F};
+    Sub:=[];
+
+    for k in DivisorsOfn do
+        iterseq:=[f : f in echofield | f^(p^k) eq f];
+
+        // remove reappearing elements
+        for q in iterseq do 
+            echofield:=Exclude(echofield,q);
+        end for;
+        Sub:=Append(Sub,<iterseq,k>);
+    end for;
+            
+    return Sub;
+end function;
+
+// ----------- [EXERCISE 2] ------------------
+
+function DivideByOrder(F,alpha)
+    //-F is a finite field
+    //-alpha is a primitive element of F
+
+    c := #F;
+    // order of alpha is c-1
+    // order of alpha^i is (c-1)/Gcd(i,c-1)
+
+    DivisorsOfOrder:=[k : k in [1..c] | (c-1) mod k eq 0];
+
+    // sequence of sequences <seq,k> where k is a divisor
+    // of the order and seq is a sqeuence of elmts of 
+    // such order
+    Sub:=[
+            <[alpha^i : i in [1..(c-1)] | (c-1)/Gcd(c-1,i) eq k],k> 
+        : k in DivisorsOfOrder ];
+        
+    return Sub;
+end function;
+
+// ----------- [EXERCISE 3] ------------------
+
+function IrrPol(F,pol)
+    // -F is a finite field
+    // -pol is a monic polynomial with coefficients in F
+
+    P<x>:=PolynomialRing(F); // polynomial ring
+    pol:=P!pol; // pol is now in the polynomial ring
+    n:=Integers()!(Degree(pol));
+    q:=Integers()!(#F); 
+    // Magma did some pretty weird stuff so I casted
+    // everything in Integers()...
+
+    // printf"polynomial: %o , degree: %o , field cardinality: %o , exponent: %o \n",pol, n, q, q^n;
+    DivisorsOfn := [k : k in Divisors(n) | IsPrime(k)];
+
+    for p in DivisorsOfn do
+        m := n div p;
+
+        h:=(x^(q^m)-x) mod pol;
+
+        if Gcd(pol,h) ne 1 then return false;
+        end if;
+
+    end for;
+    if ((x^(q^n)-x) mod pol) eq 0 then return true;
+    else return false;
+    end if;
+
+end function;
+
+// ----------- [EXERCISE 4] ------------------
+function NumberIrrPol(F,n)
+    // numberpoly: number of all polynomials of given degree
+    // numberirr: as above, but irreducible
+    numberpoly := 0; // <- I counted them out of curiosity
+    numberirr := 0;
+
+    // the vector spaces is useful to build the n+1 coefficients,
+    // one only needs to be careful when evaluating the last component
+    // of each vector - deg=n => the n+1-th component is nonzero
+    V:=VectorSpace(F,n+1); // <- all values
+    Vset:=[v : v in V | v[n+1] ne 0]; // <- all correct values
+    P<x>:=PolynomialRing(F);
+
+    for v in Vset do 
+        s:=[v[i] : i in [1..n+1]];
+        polytester := P!s;
+        // ^ casts the vector as a polynomial 
+        numberpoly:=numberpoly+1;
+
+        if IrrPol(F,polytester) then 
+            numberirr:=numberirr+1;
+        end if;
+    end for;
+    return numberirr;
+end function;
+
+function NumberIrrPol2(F, n)
+    q:=Integers()!(#F);
+    D:=Divisors(n);
+    sum:=0;
+    for d in D do 
+        sum := sum + q^(n div d) * MoebiusMu(d);
+    end for;
+    return Integers()!sum/n;
+end function;
+
+// the following function tests the correctness of the above code
+function test(k)
+    F:=GF(2);
+    correct := true;
+    for i in [1..k] do
+        n:=NumberIrrPol(F,i);
+        m:=NumberIrrPol2(F,i);
+        correct := n eq m;
+        printf"[deg = %2o] | algorithm: %6o polys,     sum: %6o polys | test %o \n",i,n,m,correct;
+        if not correct then return false;
+        end if;
+    end for;
+    return true;
+end function;
+
+
+
+
+
+
+
+
+

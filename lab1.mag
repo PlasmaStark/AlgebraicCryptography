@@ -1,0 +1,65 @@
+// ex 1 -----------------------------------------------
+// first 50 powers of 2 starting from 0
+ A:={2^i : i in [0..49]};
+
+
+// ex 2 -----------------------------------------------
+// random ints generator, n ints in (1,m)
+function rand_ints(n,m)
+	return {Random(1,m) : i in [1..n]};
+end function;  
+
+
+// ex 3 -----------------------------------------------
+// numbers of integers satisfying said conditions
+A:={x^2+3*x+1 : x in [1..100]};
+B:={a : a in A | a mod 5 eq 0};
+#B;
+
+
+// ex 4 -----------------------------------------------
+// sieve of eratosthenes
+function eratosthenes(n)
+	S:={2..n};
+	for s in S do
+		P:={p : p in S | p mod s eq 0 and p ne s};
+		S:= S diff P;
+	end for;
+	return S;
+end function;
+
+
+// ex 5 -----------------------------------------------
+// builds & prints the first 10 lines of pascal's triangle
+procedure print_pascal()
+    Tri:= [[Binomial(j,n) : n in [0..j]] : j in [0..9]];
+
+    for k in [1..10] do
+        if k mod 2 eq 0 then
+            for j in [1..((10-k)/2)] do
+                printf "     ";
+            end for;
+            for j in [1..k] do
+                printf " %3o ", Tri[k][j];
+            end for;
+            for j in [1..((10-k)/2)] do
+                printf "     ";
+            end for;
+            printf "\n";
+            else 
+
+            for j in [1..((9-k)/2)] do
+                printf "     ";
+            end for;
+            printf "  ";
+            for j in [1..k] do
+                printf " %3o ", Tri[k][j];
+            end for;
+            for j in [1..((9-k)/2)] do
+                printf "     ";
+            end for;
+            printf "   ";
+            printf "\n";
+        end if;
+    end for;
+end procedure;

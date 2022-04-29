@@ -1,0 +1,299 @@
+// Leonardo Errati, sixth assigment
+
+
+
+
+function returnSeqof4(m)
+// given an integer m, it returns a sequence of four elements 
+// representing m in VectorSpace(GF2,4) - the check on the 
+// existance of m in such vector space is unneeded, user
+// has no access to function
+
+result := Intseq(m,2); // <- integer to seq
+
+    while #result lt 4 do // <- add zeroes
+        result:=Append(result,GF(2)!0);
+    end while; 
+    return Reverse(result); // <- here I need to reverse because 
+                            //     I did not do it in the function
+
+end function;
+
+function returnSeqof16(m)
+// as above, but 16
+
+result := Intseq(m,2);
+
+    while #result lt 16 do
+        result:=Append(result,GF(2)!0);
+    end while;
+    return result; 
+
+end function; // <- here I don't 
+
+
+
+// ----------- [EXERCISE 1] ------------------
+
+function Substitution(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the cypher
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := -1; // <- return value is meaningless, returning 
+             //     -1 means an error occurred
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast 
+    case n:
+        when 0: m:= 14;
+        when 1: m:= 4;
+        when 2: m:= 13;
+        when 3: m:= 1;
+        when 4: m:= 2;
+        when 5: m:= 15;
+        when 6: m:= 11;
+        when 7: m:= 8;
+        when 8: m:= 3;
+        when 9: m:= 10;
+        when 10: m:= 6;
+        when 11: m:= 12;
+        when 12: m:= 5;
+        when 13: m:= 9;
+        when 14: m:= 0;
+        when 15: m:= 7;
+    end case;
+
+    return returnSeqof4(m);
+
+end function;
+
+
+
+
+// ----------- [EXERCISE 2] ------------------
+
+function Permutation(m)
+    // -m is a sequence of 16 bits
+    // implements the mixing layer using the lookup table
+
+    return [m[1],m[5],m[9],m[13],m[2],m[6],m[10],m[14],m[3],
+    m[7],m[11],m[15],m[4],m[8],m[12],m[16]];
+
+end function;
+
+
+
+// ----------- [EXERCISE 3] ------------------
+
+function KSchedule(K)
+    // -K is a sequence of length 16 (in F2!)
+
+    V:=VectorSpace(GF(2),4);
+    S4:=Sym({x : x in V});
+    keys:=[K];
+
+    // permutations:
+    S1 := S4!(V![1,1,0,1], V![0,1,0,1], V![1,0,1,1], V![1,0,0,1], V![0,1,1,1], V![0,0,1,0], V![0,0,0,1])
+    (V![1,0,1,0], V![1,1,1,1], V![1,1,1,0], V![0,1,1,0], V![0,0,1,1])
+    (V![0,1,0,0], V![1,0,0,0]);
+    S2 := S4!(V![1,1,0,0], V![1,1,1,0], V![0,0,0,0], V![1,1,0,1], V![1,1,1,1], V![1,0,0,1], V![0,1,0,0], V![0,0,0,1], V![0,0,1,0], V![0,1,1,0], V![1,0,1,1], V![0,1,1,1], V![0,0,1,1], V![0,1,0,1])
+    (V![1,0,1,0], V![1,0,0,0]);
+
+    for i in [1..4] do
+        localkey:=keys[i]; // <- local iteration of keys 
+        splitkey:=[
+            Eltseq(V!localkey[1..4]^S1), 
+            Eltseq(V!localkey[5..8]^S2), 
+            Eltseq(V!localkey[9..12]^S1),
+            Eltseq(V!localkey[13..16]^S2)
+            ]; 
+        
+        keys:=Append(keys,splitkey[2] cat splitkey[1] 
+                cat splitkey[4] cat splitkey[3]); // <- appends ordered key
+    end for;
+    return keys;
+
+end function;
+
+
+
+// ----------- [EXERCISE 4] ------------------
+
+function listXor(a,b)
+    error if #a ne #b, "trying to perform XOR on vectors of different length!";
+    // - a and b are vectors of equal length on F_2
+    // the function XORs them 
+    return [GF(2)! a[i]+b[i] : i in [1..#a]];
+end function;
+
+
+function splitInBlocks(m)
+    // - m is a string of length 16
+    // m is split in substrings of length 4
+    return [m[1..4],m[5..8],m[9..12],m[13..16]]; // <- this should be faster than leaving calculations
+                                                 //     to the computer
+
+end function;
+
+
+function ToyBlock(K,M)
+    // -K is a sequence of length 16 corresponding to the master key
+    // -M is a sequence of length 16 corresponding to the plaintext
+    ciphertxt := M;
+    keys := KSchedule(K);
+
+    for r in [1..4] do
+        // add noise:
+        ciphertxt := listXor(keys[r],ciphertxt);
+
+        // sbox:
+        ciphertxt := &cat [Substitution(b) : 
+                    b in splitInBlocks(ciphertxt)]; 
+
+        // mixing layer (if r =/= 4)
+        if r ne 4 then ciphertxt := Permutation(ciphertxt);
+        end if;
+    end for;
+
+    ciphertxt := listXor(ciphertxt,keys[5]); // <- last xor
+    return ciphertxt;
+
+end function;
+
+function send(N,K)
+    // -N is an integer between 0 and 65536
+    // -K is the integer key
+    // simulates a numeric message, because it seemed cool to do it
+
+    error if (N gt 65536) or (N lt 0), "invalid plaintext";
+    error if (K gt 65536) or (K lt 0), "invalid key";
+
+    plaintxt:=ChangeUniverse(returnSeqof16(N),GF(2)); // <- build plaintext
+    masterkey:=ChangeUniverse(returnSeqof16(K),GF(2)); // <- build master key
+    ciphertxt:=ChangeUniverse(
+        ToyBlock(masterkey,plaintxt)
+        ,GF(2));  // <- calculate ciphertext
+
+    return Seqint(
+        ChangeUniverse(ciphertxt,IntegerRing())
+        , 2);  // <- returns an integer
+end function;
+
+
+
+
+// ----------- [EXERCISE 5] ------------------
+
+
+function ReverseSubstitution(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the decrypting cypher, which is 
+    // the inversion of the encryption one - note that sboxes need
+    // to be invertible, of course
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := 0;
+    // ^ I need to reverse a lot of stuff because we are using 
+    // an ordering on the 2-adic representation different from 
+    // the one Magma uses
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast... again
+    case n:
+        when 14: m:= 0;
+        when 4: m:= 1;
+        when 13: m:= 2;
+        when 1: m:= 3;
+        when 2: m:= 4;
+        when 15: m:= 5;
+        when 11: m:= 6;
+        when 8: m:= 7;
+        when 3: m:= 8;
+        when 10: m:= 9;
+        when 6: m:= 10;
+        when 12: m:= 11;
+        when 5: m:= 12;
+        when 9: m:= 13;
+        when 0: m:= 14;
+        when 7: m:= 15;
+    end case;
+
+    return returnSeqof4(m);
+
+end function;
+
+
+
+function ToyBlockDecipher(K,C)
+    // -K is a sequence of length 16 corresponding to the master key
+    // -C is a sequence of length 16 corresponding to the ciphertext
+    plaintxt := C;
+    keys := KSchedule(K);
+    
+    // first iterations are atypical
+    plaintxt := listXor(keys[5],plaintxt);
+    plaintxt := &cat [ReverseSubstitution(b) : 
+                    b in splitInBlocks(plaintxt)]; 
+    plaintxt := listXor(keys[4],plaintxt);
+
+
+    // usual iterations 
+    for r in [1..3] do
+        
+        // undo mixing layer 
+        plaintxt := Permutation(plaintxt);
+
+        // undo sbox:
+        plaintxt := &cat [ReverseSubstitution(b) : 
+                    b in splitInBlocks(plaintxt)]; 
+
+        // remove noise:
+        plaintxt := listXor(keys[4-r],plaintxt);
+    end for;
+    return plaintxt;
+
+end function;
+
+function receive(N,K)
+    // -N is an integer between 0 and 65536
+    // -K is the integer key
+    // simulates a numeric message (this time: reception)
+
+    error if (N gt 65536) or (N lt 0), "invalid ciphertext";
+    error if (K gt 65536) or (K lt 0), "invalid key";
+
+    ciphertxt:=ChangeUniverse(returnSeqof16(N),GF(2));
+    masterkey:=ChangeUniverse(returnSeqof16(K),GF(2));
+    plaintxt:=ChangeUniverse(
+        ToyBlockDecipher(masterkey,ciphertxt)
+        ,GF(2));
+
+    return Seqint(
+        ChangeUniverse(plaintxt,IntegerRing())
+        , 2); // <- return an integer
+end function;
+
+
+
+// ----------- [me having fun] ------------------
+
+procedure testsystem(N)
+    // test the system N times with random numbers
+    for i in [1..N] do 
+        P:=Random(1,10000); // <- 10k was just a bound I found interesting, 
+        K:=Random(1,10000); //    no meaning in it (note it is between 0 and 65536)
+        S:=send(P,K);
+        R:=receive(S,K);
+
+        printf"  msg: %5o  key: %5o  | received: %5o (%o) \n",P,K,R,P eq R;
+        // ^ the funny thing is, FALSE is one letter longer than TRUE, so
+        // were an instance FALSE it would be much noticable - this was 
+        // random, not intentional
+    end for;
+
+end procedure;

@@ -1,0 +1,260 @@
+// --------------------------------------------------
+// ---------------------- EXERCISE 1 ----------------
+// --------------------------------------------------
+
+
+
+function CreateShares(param,s,n,k)
+    // INPUTS:  - param parameters
+    //          - S secret, integer in [0 .. q-1]
+    //          - n number of participants
+    //          - k threshold
+    q := param[1]; g := param[2];
+    h := param[3]; p := param[4];
+
+    // ------------------ the function -------------
+
+    function E(x,y) 
+        return (  Modexp(g,Integers()!x,p)*
+        Modexp(h,Integers()!y,p)  ) mod p; 
+    end function;
+
+    // ------------------ setup of f -------------
+    Zq := Integers(q);
+    P<x> := PolynomialRing(Zq);
+    // the following is done so that F has degree EXACTLY k-1 (F_(k-1) cannot be 0)
+    F := P! ([Zq!s] cat [Random(Zq) : i in [1..k-2]] cat [Zq!Random([1..q-1])]);
+    s := [Evaluate(F,Zq! j) : j in [1..n]];
+    // printf"   > F: %o\n",F;
+
+    // ------------------ setup of g -------------
+    G := P! ([Random(Zq)] cat [Random(Zq) : i in [1..k-2]] cat [Zq!Random([1..q-1])]);
+    t := [Evaluate(G,Zq! j) : j in [1..n]];
+    // printf"   > g: %o\n",G;   
+
+    // ------------------ return -------------
+    // OUTPUTS: -W list of n shares
+    //          -V list of k verify-values
+
+    W := [<j,s[j],t[j]> : j in [1..n]];
+    coefF := Coefficients(F);
+    coefG := Coefficients(G);
+    V := [E(coefF[j],coefG[j]) : j in [1..k]];    // < verification list
+    return W,V;
+end function;
+
+
+
+function VerifyAndRecoverSecret(param,Wprime,V)
+    // INPUTS:  - param parameters
+    //          - W’ list of t shares
+    //          - V list of k verify-values
+    q := param[1]; g := param[2];
+    h := param[3]; p := param[4];
+    numsigners := #Wprime;
+    k := #V;
+
+    // ------------------ the function -------------
+
+    function E(x,y) 
+        return (  Modexp(g,Integers()!x,p)*
+        Modexp(h,Integers()!y,p)  ) mod p; 
+    end function;
+
+    // ------------------ verification -------------
+    // verifies the equation (left) = (right) for each party in the given share, where (left)
+    // is E(i-th share) and (right) is the product from the paper...
+
+    correct := true;
+    for signer in Wprime do
+        i := signer[1];             // < id of the user
+        si := signer[2];            // < component s of the i-th share (si,ti)
+        ti := signer[3];            // < component t of the i-th share (si,ti)
+        // printf"   > signer | id: %2o, si: %4o, ti: %4o\n",i,si,ti;
+        eq1 := E(si,ti) mod p;
+        eq2 := &*[Modexp(V[j+1],(i^j),p): j in [0..k-1]] mod p;
+        // printf"   > testing %4o = %4o  | ",eq1,eq2;
+        // if the equation does not hold, error...
+        if eq2 ne eq1 then
+        //    printf" > false\n";
+            correct := false;
+        // ... else, this can go on.
+        // else printf" > true\n";
+        end if;
+    end for;
+
+    if not correct then return false; end if;
+
+    // ------------------ recovery -------------
+    // OUTPUTS: - true if and only if the shares are consistent
+    //          - S secret recovered (allegedly)
+
+    // if the signers are less than the threshold, no need to bother...
+    if numsigners lt k then return correct;
+    end if;
+    // ... else calculate the secret
+    s := &+[   par[2]*(  &*[otherpar[1] * Modinv(otherpar[1]-par[1],q) : otherpar in Wprime | otherpar[1] ne par[1]]  ) : par in Wprime   ];
+    return s;
+    
+end function;
+
+
+
+
+
+
+
+
+
+
+// --------------------------------------------------
+// ---------------------- EXERCISE 2 ----------------
+// --------------------------------------------------
+// load "C:/Users/leona/OneDrive/Desktop/MAGMA anchor/sem2/lab7/lab.m";
+
+function asbits(integer,bitlength)
+    return Intseq(integer,2,bitlength);
+end function;
+
+function tointeger(bitstring)
+    return Seqint(bitstring,2);
+end function;
+
+
+function MicaliSchnorrPRNG(k,l)
+    // INPUTS:  - k security parameter
+    //          - l length parameter of the output sequence
+    // OUTPUTS: - Z random sequence
+    // ------------------ setup -------------
+    totalcycles := 0; 
+    // ^ finding an e coprime with phi(N) and such that e < 80N could be
+    // impossible, if too many tries are executed abort the calculations.
+    while true do
+        printf"-------------------------------\n";
+        totalcycles +:= 1;
+        if totalcycles eq 100 then return -1; end if;
+        // generate suitable primes of length k
+        p := Random([2^(k-1)..2^k]);
+        if not IsPrime(p) then p:=NextPrime(p);
+        end if;
+        q := Random([2^(k-1)..2^k]);
+        if not IsPrime(q) then q:=NextPrime(q);
+        end if; 
+        printf"   > found p = %o\n",p;
+        printf"   > found q = %o\n",q;
+
+        // find parameters n,N
+        n := p*q;
+        N := Floor(Log(2,n))+1;
+        phi := (p-1)*(q-1);
+        e := Random(PrimesUpTo(N div 80));
+        printf"   > phi(p,q) = %o\n",phi;
+        printf"   > N = %o\n",N;
+        
+        // try finding a suitable e, if this is not done in 
+        // some iterations the algorithm will find other primes
+        iterations := 0;
+        found := true;
+        while (GCD(e,phi) ne 1) or e gt (N div 80) do
+            e := Random(PrimesUpTo(N div 80));
+            iterations := iterations + 1;
+            if iterations eq 10000 then 
+                found := false;
+                printf"   > breaking cycle\n";
+                break;
+            end if;
+        end while;
+        printf"   > broken at cycle %o\n",iterations;
+        if not found then continue; end if;
+
+        // calculate d,r
+        d := Floor(N*(1-2/e))+1;
+        r := N - d;
+        printf"   > e = %o\n",e;
+        printf"   > d = %o\n",d;
+        printf"   > r = %o\n",r;
+        break;
+    end while;
+    // ------------------ random seed -------------
+    xi := Random([0..2^r-1]);
+    
+    // ------------------ PRand sequence -------------
+    z := [];
+    for i in [1..l] do
+        // printf"    > cycle number %o\n",i;
+        // printf"      > xi = %o\n",xi;
+        yi := Modexp(xi,e,n);
+        // printf"      > yi = %o\n",yi;
+        yi := asbits(yi,N);
+        xi := [yi[j] : j in [#yi-r+1..#yi]];
+        xi := tointeger(xi);
+        z := z cat [yi[j] : j in [1..d]];
+        // printf"      > zi = %o\n",yi;
+    end for;
+    return z;
+end function;
+
+
+
+
+
+
+
+
+
+
+// --------------------------------------------------
+// ---------------------- EXERCISE 3 ----------------
+// --------------------------------------------------
+
+function BlumBlumShubPRNG(k,l)
+    // INPUTS:  - k security parameter
+    //          - l length of the output sequence
+    // OUTPUTS: - Z random sequence   
+
+    // ------------------ setup -------------
+    while true do
+        // generate suitable primes of length k
+        p := Random([2^(k-1)..2^k]);
+        if not IsPrime(p) then p:=NextPrime(p);
+        end if;
+        q := Random([2^(k-1)..2^k]);
+        if not IsPrime(q) then q:=NextPrime(q);
+        end if;
+        
+        // verify condition on the primes
+        if p mod 4 ne 3 or q mod 4 ne 3 then continue; end if; 
+        printf"   > found p = %o\n",p;
+        printf"   > found q = %o\n",q;
+
+        // calculate remaining parameters
+        n := p*q;
+        N := Ilog(2,n) + 1;
+        break;
+    end while;
+    // ------------------ random seed -------------
+    repeat  s := Random([1..n-1]);
+    until GCD(s,n) eq 1;
+    printf"   > found s = %o\n",s;
+    xi := Modexp(s,2,n);
+    // ------------------ PRand sequence -------------
+    z := [];
+    for i in [1..l] do
+        xi := Modexp(xi,2,n);
+        zi := asbits(xi,N);
+        z := z cat [zi[1]];
+    end for;
+    return z;
+end function;
+
+function myRandom(a,b)
+    // returns a random value between a and b
+    k := Ilog(2,b)+1;
+    r := BlumBlumShubPRNG(k^2,k);
+    r := Seqint(r,2);
+    while (not r lt b) or (not r gt a) do
+        r := BlumBlumShubPRNG(k^2,k);
+        r := Seqint(r,2);
+    end while;
+    return r;
+end function;

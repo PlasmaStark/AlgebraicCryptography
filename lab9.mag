@@ -1,0 +1,329 @@
+//  [base functions] ----------------------------------------------------------------------------
+
+
+
+function ReverseIntseq(n,m,l) // © Leonardo Errati
+// possibly the best function ever
+return Reverse(Intseq(n,m,l));
+end function;
+
+function ReverseSeqint(S,m) // © Leonardo Errati
+// possibly the second best function ever
+return Seqint(ChangeUniverse(Reverse(S),IntegerRing()),m);
+end function;
+
+function XOR(x,y)
+    // - x,y are vectors of equal length over the field F2
+    return [GF(2)! x[i]+y[i] : i in [1..#x]];
+end function;
+
+function tripleXOR(x,y,z)
+    // - x,y,z are vectors of equal length over the field F2
+    return [GF(2)! x[i]+y[i]+z[i] : i in [1..#x]];
+end function;
+
+// ^ I could have done it accepting as input a list of vectors
+//   but this way the code is more readable, and it's almost the same
+//   since A xor B xor C xor D = (A xor B) xor (C xor D)
+
+function complement(z)
+    // returns the boolean complement of z
+    return [GF(2)! 1-z[i] : i in [1..#z]];
+end function;
+
+function AND(x,y)
+    // - x,y are vectors of equal length over the field F2
+
+    return [GF(2)! x[i]*y[i] : i in [1..#x]];
+end function;
+
+
+
+//  [complex functions] --------------------------------------------------------------------------
+
+
+
+function f(t,x,y,z) // the function used in SHA-1
+    // - t is an integer in [0..79]
+    // - x,y,z are vectors of equal length over the field F2
+    if t in [0..19] then
+        return XOR(   AND(x,y) , AND(complement(x),z)   );
+    elif t in [20..39] then 
+        return tripleXOR(x,y,z);
+    elif t in   [40..59] then
+        a:=AND(x,y); b:=AND(x,z); c:=AND(y,z);
+        return tripleXOR(a,b,c);
+    elif t in [60..79] then
+        return tripleXOR(x,y,z);
+    end if;
+return -1; // <- error case, basically useless because user has no access to this function
+end function;
+
+function ROTL(x,n)
+    for i in [1..n] do
+        x:=[x[j] : j in [2..(#x)]] cat [x[1]];
+    end for; return x;
+end function;
+
+
+
+// ----- conversions -------
+// functions that either (A) convert values (i.e. hex -> int) using our notations, or 
+//                       (B) adapt previous functions to our desired input types
+
+// this could have been avoided, albeit rendering the code barely readable for 
+// whoever is not myself.
+
+
+/*
+function HextoBin(w)
+    // turns an hex string into its representation in base 2 (length: 32 bits)
+    return ReverseIntseq(StringToInteger(w,16),2,4*(#w));
+end function;
+
+function BintoHex(b)
+    // inverse of the above
+    while #b lt 32 do
+        b:= [0] cat b;
+    end while;
+
+    blocks:=[b[1..4],b[5..8],b[9..12],b[13..16],b[17..20],b[21..24],b[25..28],b[29..32]];
+    result:= &cat [IntegerToString(ReverseSeqint(bl,2),16) : bl in blocks];
+    //if #result le 1 then                                    <- it does not change anything
+    //    while result[1] eq "0" do 
+    //    result:=result[2..#result];
+    //    end while;
+    //end if;
+    return result;
+end function;
+*/
+
+function HextoBin(s)
+	if #s eq 0 then 
+        return [GF(2)! 0,0,0,0,0,0,0,0];
+    else 
+        return ChangeUniverse(
+            Reverse(Intseq(    StringToInteger(s,16), 2, #s*4)    )
+            ,GF(2));
+    end if;
+end function;
+
+
+function BintoHex(s)
+  	if #s eq 0 then 
+        return ""; 
+    else 
+        l:=#s;
+        s := IntegerToString(
+            Seqint(    ChangeUniverse(Reverse(s),Integers()),2)    ,16);
+        
+        
+        while #s lt l/4 do  
+                s:= "0" cat s;
+        end while;
+        return s; 
+    end if;
+end function;
+
+function InttoHex(i)
+    return BintoHex(  ReverseIntseq(i,2,32)  );
+end function;
+
+function HextoInt(w)
+    return ReverseSeqint(HextoBin(w),2);
+end function;
+
+function hexXOR(x,y)
+    z:=XOR( HextoBin(x) , HextoBin(y) );
+    return BintoHex(z);
+end function;
+
+function hexROTL(w,n)
+    return BintoHex(  ROTL(HextoBin(w),n)  );
+end function;
+
+// it would be interesting to write ROTL as a look-up table since we only actually 
+// use ROTL( ,30) ROTL( ,1) and ROTL( ,5)
+// it would go like zoom
+
+
+
+// [SHA-1, finally] ----------------------------------------------------------------------------
+
+
+function mySHA1(S)
+    // -S is an arbitrary long hexadecimal string;
+
+    //  [trivial case] ----------------
+
+    if #S eq 0 then     
+        return "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709";
+    end if;
+    // ^ this is seriously ugly, but it serves to avoid useless calculations; 
+    // this value is of course very known 
+
+    //  [padding] ----------------
+    M:=HextoBin(S);
+    L:=#M;
+    k:= (448 - L - 1) mod 512;
+
+    M:= M cat [1] 
+            cat ( [0 : i in [1..k]]  ) 
+            cat ( ReverseIntseq(L,2,64)  );
+    // ^ padded initial msg 
+
+    // printf"Msg: | %o \n",M; <- test
+    N:=#M div 512; // <- this will come in handy later, it is the number of blocks of len 512;
+                   //    if everything is correct it should be an integer
+    blocks:=[   M[(512*i-511)..(512*i)]  : i in [1..N]   ]; // <- the N blocks of the message
+
+    // it would be wiser to put every phase of the hash function into a separate 
+    // function to let the garbage collector remove unused values and 
+    // decrease the strain on the CPU, but it would be almost
+    // unnoticable and render the code barely readable
+
+
+    //  [initial values] ----------------
+
+    H:=["67452301","efcdab89","98badcfe","10325476","c3d2e1f0"]; // <- initial values 
+
+
+    //  [main body] ----------------
+
+    q:=2^32; // <- we shall use this to write mod q for our calculations, so that 
+             //    the calculator does not have to calculate it every single time
+
+    K:=["5a827999" : i in [0..19]] cat ["6ed9eba1" : i in [20..39]] 
+     cat ["8f1bbcdc" : i in [40..59]] cat ["ca62c1d6" : i in [60..79]];
+
+    // printf"%o, %o | %o \n",N,#blocks,blocks; <- test
+    for bl in blocks do
+
+        // -- divide bl in words ----
+        words:=[   BintoHex( bl[(32*i-31)..(32*i)] )  : i in [1..16]   ];
+        
+        // -- sequence Wt -----------
+
+        W:= [w : w in words];
+        for t in [17..80] do
+            xored := hexXOR(   hexXOR(W[t-3],W[t-8]) , hexXOR(W[t-14],W[t-16])   );
+            W:=Append(W,hexROTL(xored,1));
+        end for;
+        // ^ notice how the values stay as HEXADECIMAL, this was prefered for didactic reasons;
+        // all this going back and forth from binary to hexadecimal is a waste of resources,
+        // but we wish to build a readable algorithm, not an outstandingly fast one
+
+        // ------- constants -------
+        a:=H[1]; b:=H[2]; 
+        c:=H[3]; d:=H[4]; 
+        e:=H[5];
+
+        // -- switch & operations --
+
+        for j in [0..79] do
+            T:=HextoInt( hexROTL(a,5) ) 
+                     + HextoInt(   BintoHex( f(j,HextoBin(b),HextoBin(c),HextoBin(d)) )   )
+                     + HextoInt( e )
+                     + HextoInt( K[j+1] )
+                     + HextoInt( W[j+1] ) mod q;
+            e := d;
+            d := c;
+            c := hexROTL(b,30);
+            b := a;
+            a := InttoHex(T mod q);
+        end for;
+
+        // -- new values -----------
+        H[1] := InttoHex(   (HextoInt(H[1]) + HextoInt(a) ) mod q  ); 
+        H[2] := InttoHex(   (HextoInt(H[2]) + HextoInt(b) ) mod q  ); 
+        H[3] := InttoHex(   (HextoInt(H[3]) + HextoInt(c) ) mod q  ); 
+        H[4] := InttoHex(   (HextoInt(H[4]) + HextoInt(d) ) mod q  ); 
+        H[5] := InttoHex(   (HextoInt(H[5]) + HextoInt(e) ) mod q  ); 
+
+        /*
+        for i in [1..5] do
+            h := H[i];
+            if #h gt 8 then 
+                H[i]:=h[2..#h];
+            end if;
+        end for;
+        */
+
+    end for;
+    return &cat H;
+end function;
+
+procedure test(N)
+
+    // --- mockery procedure ---------
+
+    angry := false;
+    if (N gt 1000) then 
+        printf"you're a real madman, I like it \n";
+    elif (N le 30) then
+        printf"I'm not even gonna bother for just %o \n", N;
+        angry := true;
+    elif (N le 1000) then
+        printf"just %o? fine... \n", N;
+    end if;
+
+
+    if not angry then
+
+        // --- total expected time ---------
+
+        if N lt 300 then d := 10;
+        else d:= 20;
+        end if;
+        // all this stuff about d is necessary because I hate when the row overflosw in
+        // the compiler; the above cycle can of course be perfected and extended, but it 
+        // works well enough for our purposes.
+
+        m := N div d; 
+        for i in [1..m] do 
+            printf"-";
+        end for;
+        printf"  <- for completion \n";
+
+
+        //--- main cycle ---------
+
+        correct := 0; // <- # of correct values
+        for i in [1..N] do
+            // -- generate values -----------
+            len := Random([0..300]);
+            errors:=[]; // <- list of errors, printed later on
+            testvect := BintoHex (  [Random(GF(2)) : i in [1..len]]  );
+
+            // -- test -----------
+            if mySHA1(testvect) eq SHA1(testvect) then
+                correct := correct + 1;
+            else 
+                errors:= errors cat [testvect]; // <- add to list of errors
+            end if;
+
+            // -- counter -----------
+            if (i mod d eq 0) then 
+                printf"-";
+            end if;
+        end for;
+        printf"\n";
+
+
+        // -- conclusion & errors -----------
+        printf" > correct values: %o of %o", correct, N;
+
+        for e in errors do
+            printf"- error: \n";
+                printf"            input:   %o \n", e;
+                printf"    expected:   %o \n", SHA1(e);
+                printf"    calculated: %o \n", mySHA1(e);
+        end for;
+
+    else
+        printf" > quit execution";
+    end if;
+
+end procedure;
+
+

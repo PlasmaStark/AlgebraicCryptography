@@ -1,0 +1,276 @@
+// Leonardo Errati, seventh assigment
+
+
+// ----------- [pieces of the cipher] ------------------
+// functions I had hanging around from the last assignment
+
+
+function returnSeqof4(m)
+// given an integer m, it returns a sequence of four elements 
+// representing m in VectorSpace(GF2,4) - the check on the 
+// existance of m in such vector space is unneeded, user
+// has no access to function
+
+    result := Intseq(m,2); // <- integer to seq
+
+    while #result lt 4 do // <- add zeroes
+        result:=Append(result,GF(2)!0);
+    end while; 
+    return Reverse(result); // <- here I need to reverse because 
+                            //     I did not do it in the function
+
+end function;
+
+function Sbox(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the cypher
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := -1; // <- return value is meaningless, returning 
+             //     -1 means an error occurred
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast 
+    case n:
+        when 0: m:= 14;
+        when 1: m:= 4;
+        when 2: m:= 13;
+        when 3: m:= 1;
+        when 4: m:= 2;
+        when 5: m:= 15;
+        when 6: m:= 11;
+        when 7: m:= 8;
+        when 8: m:= 3;
+        when 9: m:= 10;
+        when 10: m:= 6;
+        when 11: m:= 12;
+        when 12: m:= 5;
+        when 13: m:= 9;
+        when 14: m:= 0;
+        when 15: m:= 7;
+    end case;
+
+    return returnSeqof4(m);
+
+end function;
+function Permutation(m)
+    // -m is a sequence of 16 bits
+    // implements the mixing layer using the lookup table
+
+    return [m[1],m[5],m[9],m[13],m[2],m[6],m[10],m[14],m[3],
+    m[7],m[11],m[15],m[4],m[8],m[12],m[16]];
+
+end function;
+function listXor(a,b)
+    error if #a ne #b, "trying to perform XOR on vectors of different length!";
+    // - a and b are vectors of equal length on F_2
+    // the function XORs them 
+    return [GF(2)! a[i]+b[i] : i in [1..#a]];
+end function;
+function splitInBlocks(m)
+    // - m is a string of length 16
+    // m is split in substrings of length 4
+    return [m[1..4],m[5..8],m[9..12],m[13..16]]; // <- this should be faster than leaving calculations
+                                                 //     to the computer
+
+end function;
+function ToyBlock(M)
+    // -K is a sequence of length 16 corresponding to the master key
+    // -M is a sequence of length 16 corresponding to the plaintext
+    ciphertxt := M;
+    
+
+    for r in [1..4] do
+        // add noise:
+        ciphertxt := listXor(keys[r],ciphertxt);
+
+        // sbox:
+        ciphertxt := &cat [Sbox(b) : 
+                    b in splitInBlocks(ciphertxt)]; 
+
+        // mixing layer (if r =/= 4)
+        if r ne 4 then ciphertxt := Permutation(ciphertxt);
+        end if;
+    end for;
+
+    ciphertxt := listXor(ciphertxt,keys[5]); // <- last xor
+    return ciphertxt;
+
+end function;
+
+function ReverseSbox(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the decrypting cypher, which is 
+    // the inversion of the encryption one - note that sboxes need
+    // to be invertible, of course
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := 0;
+    // ^ I need to reverse a lot of stuff because we are using 
+    // an ordering on the 2-adic representation different from 
+    // the one Magma uses
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast... again
+    case n:
+        when 14: m:= 0;
+        when 4: m:= 1;
+        when 13: m:= 2;
+        when 1: m:= 3;
+        when 2: m:= 4;
+        when 15: m:= 5;
+        when 11: m:= 6;
+        when 8: m:= 7;
+        when 3: m:= 8;
+        when 10: m:= 9;
+        when 6: m:= 10;
+        when 12: m:= 11;
+        when 5: m:= 12;
+        when 9: m:= 13;
+        when 0: m:= 14;
+        when 7: m:= 15;
+    end case;
+
+    return returnSeqof4(m);
+
+end function;
+
+
+// ----------- [EXERCISE 1] ------------------
+
+
+function LinApproxTable() // <- WTF
+    V:=VectorSpace(GF(2),4);
+    F16:=[Reverse(Eltseq(w)) : w in V]; // sequence of ALL X=(X1,X2,X3,X4)
+    // ^ they need to be reversed because the author of the paper reads from right to left 
+    Y:=[ChangeUniverse(Sbox(f),GF(2)) : f in F16]; // sequence of ALL associated Y=(Y1,Y2,Y3,Y4)
+
+    // checks number of times the input sum matches the output sum, inputsum and outputsum
+    // are lists of 0,1 values and only 1 values are considered... this is equivalent to 
+    // saying (0,1,1,0) <-> X_2+X_3 (this is an example for INPUTSUM)
+    function numberOfMatches(inputsum, outputsum)
+        matches := 0;
+        for j in [1..16] do
+            if &+([F16[j][i] : i in [1..4] | inputsum[i] ne 0] cat [0])
+                    eq 
+                &+([Y[j][i] : i in [1..4] | outputsum[i] ne 0] cat [0])
+                then
+                matches:=matches+1;
+            end if;
+        end for;
+        return matches;
+    end function;
+    
+    return [ [numberOfMatches(input,output) - 8 : output in F16] : input in F16]; 
+
+end function;
+
+
+
+// ----------- [EXERCISE 2] ------------------
+
+function genKeys()
+    return [
+        [Random(GF(2)) : i in [1..16]] 
+        : j in [1..5]];
+end function;
+
+keys := genKeys();
+
+function genSequences()
+    out:=[];
+    for i in [1..10000] do
+        P := [Random(GF(2)) : j in [1..16]];
+        C := ChangeUniverse(ToyBlock(P),GF(2));
+        out:=Append(out,<P,C>);
+    end for;
+    return out;
+end function;
+
+S := genSequences();
+
+function listXor(a,b) // XORs two lists of eq length
+    error if #a ne #b, "trying to perform XOR on vectors of different length!";
+    // - a and b are vectors of equal length on F_2
+    // the function XORs them 
+    return [GF(2)! a[i]+b[i] : i in [1..#a]];
+end function;
+
+function LinAttack(Seq)
+
+    matches:=[RationalField()! 0 : i in [1..256]];
+
+    // the following is eq5 from the paper: 
+    // U4,6 + U4,8 + U4,14 + U4,16 + P5 + P7 + P8 = 0
+    // (!) NOTE that Ui,j is meant to stand for U_{i,j} (LaTeX syntax)
+
+    // we need to implement what follows:
+    // for every possible value of K5,5...K5,8 K5,13...K5,16
+    // we calculate U4 by running data backwards through the 
+    // partial subkey and sboxes S42, S44 (which are the same)
+
+    for i in [1..256] do
+        counter := 0;
+        partialkey := Intseq(i,2);
+
+        while #partialkey lt 8 do
+        partialkey := Append(partialkey,GF(2)! 0);
+        end while;
+        // ^ the partial key needs to always have 8 digits
+
+        for j in [1..10000] do
+            plaintxt:=S[j][1]; ciphertxt:=S[j][2];
+
+            // U41 and U42 are blocks of 4 bits containing the two components of U4 we are 
+            // interested in, i.e. U4,5 U4,6 U4,7 U4,8 and U4,13 U2,14 U4,15 U4,16
+            // we XOR them with the current partial key...
+            U4a:=ChangeUniverse(listXor(ciphertxt[5..8],partialkey[1..4]),GF(2));
+            U4b:=ChangeUniverse(listXor(ciphertxt[13..16],partialkey[5..8]),GF(2));
+
+            // ... and reverse the sboxes
+            U4a:=ChangeUniverse(ReverseSbox(U4a),GF(2)); 
+            U4b:=ChangeUniverse(ReverseSbox(U4b),GF(2));
+
+            // check:
+                    // U4,6  + U4,8  + U4,14 + U4,16 + P5         + P7          + P8 
+            equation:= U4a[2]+ U4a[4]+ U4b[2]+ U4b[4]+ plaintxt[5]+ plaintxt[7] + plaintxt[8];
+
+            // printf"%o, %o \n %o \n equation: %o   %o\n", U41, U42,plaintxt,equation, equation eq 0;
+
+            if equation eq 0 then counter := counter + 1;
+            end if;
+        end for;
+
+        matches := Append(matches,Abs((counter - 5000) / 10000));
+
+        // ------------------
+        m := i div 10;
+        if i mod 10 eq 0 then //printf"iteration %o \n", i; 
+            printf"-"; 
+        end if;
+        
+    end for;printf"\n"; 
+    // ------------------
+
+    // Max(mathces)[2] is where the max of this vector takes place, 
+    // coincidentaly (due to the structure of the main cycle) this 
+    // i-th component if conversed into number gives the bits of the 
+    // best performing target partial subkey
+
+    _,M:=Max(matches); ret := Intseq(M,2);
+    while #ret lt 8 do
+    ret := Append(ret,GF(2)! 0);
+    end while;
+    
+    return  ret[1..4], // first piece of the target subkey
+            ret[5..8]; // second piece of the target subkey
+
+end function;
+
+
+// ----------- [EXERCISE 3] ------------------
+

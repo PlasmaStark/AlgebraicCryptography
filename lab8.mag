@@ -1,0 +1,307 @@
+// ----------- [stuff for the cipher] ------------------
+// (mostly from previous lectures)
+
+function listXor(a,b)
+    error if #a ne #b, "trying to perform XOR on vectors of different length!";
+    // - a and b are vectors of equal length on F_2
+    // the function XORs them 
+    return [GF(2)! a[i]+b[i] : i in [1..#a]];
+end function;
+function Sbox(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the cypher
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := -1; // <- return value is meaningless, returning 
+             //     -1 means an error occurred
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast 
+    case n:
+        when 0: m:= 14;
+        when 1: m:= 4;
+        when 2: m:= 13;
+        when 3: m:= 1;
+        when 4: m:= 2;
+        when 5: m:= 15;
+        when 6: m:= 11;
+        when 7: m:= 8;
+        when 8: m:= 3;
+        when 9: m:= 10;
+        when 10: m:= 6;
+        when 11: m:= 12;
+        when 12: m:= 5;
+        when 13: m:= 9;
+        when 14: m:= 0;
+        when 15: m:= 7;
+    end case;
+
+    return Intseq(m,2,4); // <- why not use it, now that I know it exists
+
+end function;
+function ReverseSbox(m)
+    // -m is a sequence of 4 bits
+    // implements the s-box of the decrypting cypher, which is 
+    // the inversion of the encryption one - note that sboxes need
+    // to be invertible, of course
+
+    n := Seqint(
+        ChangeUniverse(Reverse(m),IntegerRing())
+        ,2);
+    m := 0;
+    // ^ I need to reverse a lot of stuff because we are using 
+    // an ordering on the 2-adic representation different from 
+    // the one Magma uses
+
+    // possibly not the most intelligent way, but it should 
+    // be quite fast... again
+    case n:
+        when 14: m:= 0;
+        when 4: m:= 1;
+        when 13: m:= 2;
+        when 1: m:= 3;
+        when 2: m:= 4;
+        when 15: m:= 5;
+        when 11: m:= 6;
+        when 8: m:= 7;
+        when 3: m:= 8;
+        when 10: m:= 9;
+        when 6: m:= 10;
+        when 12: m:= 11;
+        when 5: m:= 12;
+        when 9: m:= 13;
+        when 0: m:= 14;
+        when 7: m:= 15;
+    end case;
+
+    return Intseq(m,2,4);;
+
+end function;
+function Permutation(m)
+    // -m is a sequence of 16 bits
+    // implements the mixing layer using the lookup table
+
+    return [m[1],m[5],m[9],m[13],m[2],m[6],m[10],m[14],m[3],
+    m[7],m[11],m[15],m[4],m[8],m[12],m[16]];
+
+end function;
+function splitInBlocks(m)
+    // - m is a string of length 16
+    // m is split in substrings of length 4
+    return [m[1..4],m[5..8],m[9..12],m[13..16]]; // <- this should be faster than leaving calculations
+                                                 //     to the computer
+
+end function;
+function ToyBlock(M)
+    // -K is a sequence of length 16 corresponding to the master key
+    // -M is a sequence of length 16 corresponding to the plaintext
+    ciphertxt := M;
+    
+
+    for r in [1..4] do
+        // add noise:
+        ciphertxt := listXor(keys[r],ciphertxt);
+
+        // sbox:
+        ciphertxt := &cat [Sbox(b) : 
+                    b in splitInBlocks(ciphertxt)]; 
+
+        // mixing layer (if r =/= 4)
+        if r ne 4 then ciphertxt := Permutation(ciphertxt);
+        end if;
+    end for;
+
+    ciphertxt := listXor(ciphertxt,keys[5]); // <- last xor
+    return ciphertxt;
+
+end function;
+
+
+
+
+// ----------- [EXERCISE 1] ------------------
+
+function DiffDistTable()
+    // implements the Differential Distribution table of the S-Box used in the cipher
+
+    data := [Intseq(j,2,4) : j in [0..15]]; 
+    // ^ all possible touples of length 4 and values in {0,1}, I build it now so the
+    // compiler does not have to load it every time in the cycles
+    rows:=[];
+
+    for deltaX in data do // for all possible values of ΔX (delta X, in case unicode messes the words up)...
+        row:=[0 : i in [0..15]]; // <- the corresponding row
+
+        for X1 in data do // for all possible values of X1...
+            X2:= listXor(X1,deltaX); // calculate X2
+            deltaY:= ChangeUniverse(  listXor(Sbox(X1),Sbox(X2))  ,  IntegerRing()  ); // calculate the deltaY corresponding to (X1,X2)
+            
+            column:= Seqint(deltaY,2) + 1 ; // the correct column has +1 since magma made the weird decision
+                                            // to indicise arrays starting from 1 
+            row[column] := row[column] +1;
+            // ^ put the valute of deltaY in the correct place of the row for further analysis:
+            // saving the values of ΔY in this way is most convenient
+        end for;
+        rows:= Append(rows,row);
+
+    end for;
+
+    // we will try to find the maximum of the whole table, and having saved our data this way it suffices to find its (row,col)
+    // position: the output will be deltaX such that deltaX is (row-1), deltaY is (col-1)... again, the -1 is needed because magma
+    // has a weird opinion on indeces 
+    return rows;
+end function;
+
+
+
+
+// ----------- [EXERCISE 2] ------------------
+
+// generate keys 
+function genKeys()
+    return [
+        [Random(GF(2)) : i in [1..16]] 
+        : j in [1..5]];
+end function;
+
+keys := genKeys();
+
+// generates ad hoc equences of ciphertext, i.e. such that deltaX is the given one 
+// (we will need those to study deltaY)
+function genSequences1()
+    deltaX := [GF(2)! 0,0,0,0,1,0,1,1,0,0,0,0,0,0,0,0];
+    out:=[];
+    for i in [1..5000] do
+        X1 := [Random(GF(2)) : j in [1..16]];
+        X2:= listXor(X1,deltaX);
+        Y1 := ChangeUniverse(ToyBlock(X1),GF(2));
+        Y2 := ChangeUniverse(ToyBlock(X2),GF(2));
+        out:=Append(out,<Y1,Y2>);
+    end for;
+    return out;
+end function;
+
+function DiffAttack()
+    // the target partial subkey is [K5,5...K5,8  ,  K5,13...K5,16] where 
+    // Ki,j stands for K_{(i,j)} using the notation of the article; we shall refer
+    // to them as just [K5...K8  ,  K13...K16], omitting the 5 since we already know 
+    // we wish to recover bits of key 5
+    S := genSequences1();
+    // [K5...K8  ,  K13...K16] is composed of 8 possible elements, working in binary
+    // we need to generate values from 0 to 255
+
+    empirical_data := [0 : i in [1..256]];
+    desired_delta := [GF(2)! 0,1,1,0,0,1,1,0];
+    V := [v : v in VectorSpace(GF(2),8)];
+
+    for i in [1..256] do
+        K := Eltseq(V[i]);
+        for s in S do
+            data11 := s[1][5..8];  data12 := s[1][13..16]; // <- the desired parts of the first ciphertext
+            data21 := s[2][5..8];  data22 := s[2][13..16]; // <- the desired parts of the second ciphertext
+
+            empirical_delta_left := listXor( 
+                ReverseSbox( listXor(data11, K[1..4]) ), 
+                ReverseSbox( listXor(data21, K[1..4]) )    );
+            empirical_delta_right := listXor( 
+                ReverseSbox( listXor(data12, K[5..8]) ), 
+                ReverseSbox( listXor(data22, K[5..8]) )    );
+            
+                // ^ this, in order, (i) xor-s the two entries with the trial key, (ii) reverses their  
+                // respective sboxes, (iii) xor-s the two entries between them
+            if (empirical_delta_left cat empirical_delta_right) eq desired_delta then // if empirical delta = desired delta...
+            empirical_data[i] := empirical_data[i] + 1; // we just found a right pair 
+            end if;
+            // printf"%o| %o | %o \n", desired_delta, empirical_delta_left cat empirical_delta_right, (empirical_delta_left cat empirical_delta_right) eq desired_delta;
+
+        end for;
+
+        // counter -------
+        if i mod 10 eq 0 then
+            printf"-"; 
+        end if;
+        // ---------------
+    end for;
+    printf"\n"; 
+
+    _,M:=Max(empirical_data); // <- of course, this max is the exact moment in which the cycle above encountered
+                              //    the best trial key, which is M
+    return Eltseq(V[M])[1..4], Eltseq(V[M])[5..8];
+
+
+end function;
+
+// ----------- [EXERCISE 3] ------------------
+
+function genSequences2()
+    deltaX := [GF(2)! 0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,0];
+    out:=[];
+    for i in [1..5000] do
+        X1 := [Random(GF(2)) : j in [1..16]];
+        X2:= listXor(X1,deltaX);
+        Y1 := ChangeUniverse(ToyBlock(X1),GF(2));
+        Y2 := ChangeUniverse(ToyBlock(X2),GF(2));
+        out:=Append(out,<Y1,Y2>);
+    end for;
+    return out;
+end function;
+
+function PersonalTrail()
+    // the target partial subkey is [K5,5...K5,8  ,  K5,13...K5,16] where 
+    // Ki,j stands for K_{(i,j)} using the notation of the article; we shall refer
+    // to them as just [K5...K8  ,  K13...K16], omitting the 5 since we already know 
+    // we wish to recover bits of key 5
+    S := genSequences2();
+    // [K5...K8  ,  K13...K16] is composed of 8 possible elements, working in binary
+    // we need to generate values from 0 to 255
+
+    // using my trail, the following sboxes are activated in the fourth stage:
+    // --[  x  ]--[     ]--[  x  ]--[     ]--
+    // so we are interested in U4,1...U4,4, U4,9...U4,12
+
+    // see THIS for more info on my trail: https://drive.google.com/drive/folders/1byQTSz9sOujt0gBwShZJmckgD9RU396G?usp=sharing
+
+    empirical_data := [0 : i in [1..256]];
+    desired_delta := [GF(2)! 0,1,1,0,0,1,1,0];
+    V := [v : v in VectorSpace(GF(2),8)];
+
+    printf"-------------------------   <- completion time \n"; 
+
+    for i in [1..256] do
+        K := Eltseq(V[i]);
+        for s in S do
+            data11 := s[1][1..4];  data12 := s[1][9..12]; // <- the desired parts of the first ciphertext
+            data21 := s[2][1..4];  data22 := s[2][9..12]; // <- the desired parts of the second ciphertext
+
+            empirical_delta_left := listXor( 
+                ReverseSbox( listXor(data11, K[1..4]) ), 
+                ReverseSbox( listXor(data21, K[1..4]) )    );
+            empirical_delta_right := listXor( 
+                ReverseSbox( listXor(data12, K[5..8]) ), 
+                ReverseSbox( listXor(data22, K[5..8]) )    );
+            
+                // ^ this, in order, (i) xor-s the two entries with the trial key, (ii) reverses their  
+                // respective sboxes, (iii) xor-s the two entries between them
+            if (empirical_delta_left cat empirical_delta_right) eq desired_delta then // if empirical delta = desired delta...
+            empirical_data[i] := empirical_data[i] + 1; // we just found a right pair 
+            end if;
+            // printf"%o| %o | %o \n", desired_delta, empirical_delta_left cat empirical_delta_right, (empirical_delta_left cat empirical_delta_right) eq desired_delta;
+
+        end for;
+
+        // counter -------
+        if i mod 10 eq 0 then
+            printf"-"; 
+        end if;
+        // ---------------
+    end for;
+    printf"\n";
+
+    _,M:=Max(empirical_data); // <- of course, this max is the exact moment in which the cycle above encountered
+                              //    the best trial key, which is M
+    return Eltseq(V[M])[1..4], Eltseq(V[M])[5..8];
+
+
+end function;

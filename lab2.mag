@@ -1,0 +1,202 @@
+// (remember to ask if there is a way to create a routine similiar to _main_ in python, but in 
+// a magma file)
+
+
+printf "\n -----------[LEONARDO ERRATI]----------- \n \n \n \n";
+
+
+// EXERCISE 1 ------------------------------------------------------
+
+procedure exercise1()
+    // we will embed the polynomial in R to evaluate all the roots of its derivatives,
+    // then we will only need to study them.
+
+    R<x>:=PolynomialRing(RealField());
+    p:=25*x-x^2+x^3-2*x^4;
+
+    alpha:=Roots(Derivative(p),RealField())[1][1];
+
+    // now we only need to evaluate it in the points belonging to Z
+
+    a := Floor(alpha);
+    b := Ceiling(alpha);
+    
+    if Evaluate(p,a) ge Evaluate(p,b) then
+        printf "the max is the image of %o", a;
+    else
+        printf "the max is the image of %o", b;
+    end if;
+
+    // the max is the image of x=1.
+end procedure;
+
+
+// ----
+printf "----- exercise 1 ----- \n";
+printf "p(x) = 25*x-x^2+x^3-2*x^4 \n";
+exercise1(); 
+printf "\n \n";
+// ----
+
+
+// EXERCISE 2 ------------------------------------------------------
+
+function Gauss(n)
+    error if (n le 0), (Category(n) ne RngIntElt), "input must be a positive integer";
+    // (remember to ask how to check for membership, code above does not work,
+    // Gauss(0.17) is accepted)
+    m:= 1; // since n is in Z^+, n=/=0 and m=0 is not needed
+    partial:=1;
+    while (m le n/2+1) do // CHECK CONDITION 
+        if (partial eq n) then
+            return true;
+        elif (partial lt n) then 
+            m:=m+1;
+            partial:=partial+m;
+        else 
+            return false;
+            break;
+        end if;
+    end while;
+end function;
+
+procedure test()
+    A:=[n : n in [1..100000] | Gauss(n)];
+    A;
+end procedure;
+
+
+
+// ----
+printf "----- exercise 2 ----- \n";
+printf "first 100.000 integers with such property \n";
+// test(); <- uncomment for output!
+printf "[output commented out for an user-friendly report]";
+printf "\n \n";
+// ----
+
+
+// EXERCISE 3 ------------------------------------------------------
+
+procedure fermatnotprime()
+    n:=0;
+    repeat 
+        a:=(2^(2^n)+1); 
+        n:=n+1; 
+    until not IsPrime(a);
+    // needs to print n-1 due to the procedure incrementing n
+    n-1;
+    end procedure;
+// program loops until it finds a prime, then prints it.
+
+
+
+
+// ----
+printf "----- exercise 3 ----- \n";
+printf "first exponent resulting in a composite fermat number \n";
+fermatnotprime();
+printf "\n \n";
+// ----
+
+
+// EXERCISE 4 ------------------------------------------------------
+
+procedure mersennenotprime()
+    n:=2; 
+
+    while true do
+        // calculate mersenne number
+        a:=((2^n)-1);
+
+        if IsPrime(a) then
+            n:=NextPrime(n);
+        else 
+            n; break;
+        end if;
+    end while;
+    end procedure;
+
+
+
+
+// ----
+printf "----- exercise 4 ----- \n";
+printf "first exponent resulting in a composite mersenne number \n";
+mersennenotprime();
+printf "\n \n";
+// ----
+
+
+// EXERCISE 5 ------------------------------------------------------
+
+
+
+function FermatPseudoPrime(n)
+    error if (n le 0), (Category(n) ne RngIntElt), "input must be a positive integer";
+    // (same issues as ex2 ^)
+
+    // set of coprimes in Zn
+    A := [ a : a in [1..(n-1)] | GCD(a,n) eq 1];
+
+    // iterates on coprimes and performs test
+    for a in A do
+    // "el:", a;   <- to check elements, commented out 
+        if (a^(n-1) mod n) ne 1  then 
+            // "-> err:", a^(n-1) mod n;    <- to check errors, commented out 
+            return false;
+        end if;
+    end for;
+    return true;
+    end function;
+
+procedure firstliars(k)
+    i:=1;
+    n:=2;
+    while (i le k) do
+        if (FermatPseudoPrime(n) and (not IsPrime(n))) then
+            n;
+            i:=i+1;
+        end if;
+        n:=n+1;
+        end while;
+    end procedure;
+
+// firstliars(3) finds the first liars (i.e. carmichael numbers);
+
+
+
+
+
+// ----
+printf "----- exercise 5 ----- \n";
+printf "first Carmichael numbers \n";
+firstliars(3);
+printf "\n \n";
+// ----
+
+// EXERCISE 6 ------------------------------------------------------
+
+function LagrangePolynomial2(S)
+    Q<t>:=PolynomialRing(Rationals());
+    x:=[S[1][1],S[2][1],S[3][1]];
+    y:=[S[1][2],S[2][2],S[3][2]];
+
+    return y[1]*(( (t-x[2])*(t-x[3]) )/( (x[1]-x[2])*(x[1]-x[3]) ))
+          +y[2]*(( (t-x[1])*(t-x[3]) )/( (x[2]-x[1])*(x[2]-x[3]) ))
+          +y[3]*(( (t-x[1])*(t-x[2]) )/( (x[3]-x[1])*(x[3]-x[2]) ));
+
+end function;
+
+
+
+
+
+// ----
+printf "----- exercise 6 ----- \n";
+printf "lagrange int. polynomial for given ponts (x_i,y_i) \n";
+L:=[[1/2,3],[2,-1],[-1,-1/7]];
+L;
+LagrangePolynomial2(L);
+printf "\n \n";
+// ----

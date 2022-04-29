@@ -1,0 +1,64 @@
+procedure testPollard()
+    // non avevo assolutamente sbatti di fare un test automatico per questo
+    printf" ----------- testing Pollard's algorithm ----------\n";
+    printf" --------------------------------------------------\n\n";
+
+    EC := EllipticCurve([FiniteField(1093) | 1,1]);
+    P := EC![0,1];
+    Q := EC![413,959];
+    time a:=PollardRhoEC(1093,1,1,P,Q,1067);
+    if P*a eq Q then printf"%16o * %4o  is %16o - correct\n",P,a,Q;
+    end if;
+    
+    EC := EllipticCurve([FiniteField(229) | 1,44]);
+    P := EC![5,116];
+    Q := EC![155,166];
+    time a:=PollardRhoEC(1093,1,1,P,Q,239);
+    if P*a eq Q then printf"%16o * %4o  is %16o - correct\n",P,a,Q;
+    end if;
+    
+end procedure;
+
+
+
+
+procedure testLenstra()
+    correct := 0;
+    // some header for a random slap of epicness:
+    printf" ----------- testing Lenstra's algorithm ----------\n";
+    printf" > actually injecting malware, you've been PlasmaStark'd\n";
+    printf" --------------------------------------------------\n\n";
+
+    times := 10000;
+    max := 10000000;
+    for i in [1..times] do
+        rand := Random(2,max); //printf"  N = %o \n",rand;
+        test := Lenstra(rand);
+        
+        fun := Factorization(rand);
+        empiricalproduct := &*[test[i][1]^test[i][2] : i in [1..#test]];
+
+        if empiricalproduct ne rand then 
+            printf"  N = %o |  incorrect factorization: %o \n",rand,test;
+        end if;
+
+        if (test subset fun) and (fun subset test) then 
+            correct := correct + 1;
+        else 
+            printf"  N = %o |  incorrect form: %o \n",rand,test;
+            printf"  N = %o |  MAGMA function: %o\n\n",rand,fun;
+        end if;
+    end for;
+    if times - correct ne 0 then
+        printf" --------------------------------------------------\n\n";
+    end if;
+    printf"    correctness: %o out of %o \n",correct,times;
+    printf"         errors: %o out of %o \n",times-correct,times;
+    printf" empirical err. probability: %o percent \n\n", RealField()! (100*(times-correct))/times;
+
+end procedure;
+
+
+
+time testLenstra();
+testPollard();
